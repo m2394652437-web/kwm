@@ -13,7 +13,7 @@ zig build \
 
 
 install -m 755 \
-        ~/Documents/My_files/Programming/zig/MyKWM/mykwm/zig-out/bin/kwm \
+        ~/Documents/My_files/Programming/zig/mykwm/kwm/zig-out/bin/kwm \
         ~/.local/bin/kwm
 
 echo "mykwm is successfully installed!"

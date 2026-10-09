@@ -613,6 +613,52 @@
                     },
                 },
             },
+            // Arrow-key navigation: reorder tiled windows horizontally and move them between tags vertically.
+            .{
+                .keysym = "Left",
+                .modifiers = .{ .mod4 = true, .mod1 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .swap = .{ .direction = .reverse },
+                        },
+                    },
+                },
+            },
+            .{
+                .keysym = "Right",
+                .modifiers = .{ .mod4 = true, .mod1 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .swap = .{ .direction = .forward },
+                        },
+                    },
+                },
+            },
+            .{
+                .keysym = "Up",
+                .modifiers = .{ .mod4 = true, .mod1 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .set_window_tag = .{ .tag = .{ .direction = .forward }, .focus_follow = true },
+                        },
+                    },
+                },
+            },
+            .{
+                .keysym = "Down",
+                .modifiers = .{ .mod4 = true, .mod1 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .set_window_tag = .{ .tag = .{ .direction = .reverse }, .focus_follow = true },
+                        },
+                    },
+                },
+            },
+
             .{
                 .keysym = "period",
                 .modifiers = .{ .mod4 = true },
