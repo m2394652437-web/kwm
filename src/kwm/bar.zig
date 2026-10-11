@@ -513,15 +513,7 @@ fn render_dynamic_component(self: *Self) void {
     if (ctx.cfg.bar.layout) |area| draw_layout: {
         var layout_tag_buffer: [32]u8 = undefined;
         const layout_tag = blk: {
-            const tag = switch (self.output.current_layout()) {
-                .tile => |tile| area.tags.tile.getter.get(tile.master_location),
-                .grid => |grid| area.tags.grid.getter.get(grid.direction),
-                .monocle => area.tags.monocle,
-                .deck => |deck| area.tags.deck.getter.get(deck.master_location),
-                .scroller => area.tags.scroller,
-                .centered_master => |centered_master| area.tags.centered_master.getter.get(centered_master.direction),
-                .float => area.tags.float,
-            };
+            const tag = area.tag;
             const left = mem.indexOf(u8, tag, "{{") orelse break :blk tag;
             const right = mem.lastIndexOf(u8, tag, "}}") orelse break :blk tag;
 
@@ -551,7 +543,7 @@ fn render_dynamic_component(self: *Self) void {
         };
         if (layout_tag.len == 0) break :draw_layout;
 
-        const color = ctx.cfg.bar.get_scheme(.{ .layout = self.output.current_layout() }).normal;
+        const color = ctx.cfg.bar.get_scheme(.layout).normal;
         const fg = render_.utils.color(color.fg);
         const bg = render_.utils.color(color.bg);
 

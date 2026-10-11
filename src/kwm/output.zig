@@ -26,8 +26,6 @@ pub const State = struct {
     main_tag: u32 = 1,
     prev_tag: u32 = 1,
     prev_main_tag: u32 = 1,
-    layout_tag: [32]Layout.Type,
-    prev_layout_tag: [32]Layout.Type,
 };
 
 const ctx = Context.get();
@@ -72,8 +70,6 @@ gesture_prev_tag: u32 = 0,
 tag_step_direction: i32 = 0,
 // focused window of the last scroller arrange, to animate focus changes
 scroller_prev_focus: ?*Window = null,
-layout_tag: [32]Layout.Type,
-prev_layout_tag: [32]Layout.Type,
 
 name: ?[]const u8 = null,
 x: i32 = undefined,
@@ -97,8 +93,6 @@ pub fn create(
         .rwm_output = rwm_output,
         .rwm_layer_shell_output = rwm_layer_shell_output,
         .layouts = .{ctx.cfg.layout} ** 32,
-        .layout_tag = .{ctx.cfg.default_layout} ** 32,
-        .prev_layout_tag = .{ctx.cfg.default_layout} ** 32,
     };
     output.link.init();
 
@@ -218,19 +212,6 @@ pub fn fullscreen_window(self: *Self) ?*Window {
     return null;
 }
 
-pub fn master_window(self: *Self) ?*Window {
-    {
-        var it = ctx.windows.safeIterator(.forward);
-        while (it.next()) |window| {
-            if (window.is_visible_in(self) and !window.floating) {
-                return window;
-            }
-        }
-    }
-
-    return null;
-}
-
 pub fn set_presentation(self: *Self, mode: river.OutputV1.PresentationMode) void {
     log.debug("<{*}> set presentation mode to {s}", .{ self, @tagName(mode) });
 
@@ -293,22 +274,10 @@ pub fn toggle_tag(self: *Self, mask: u32) void {
     if (comptime build_options.bar_enabled) self.bar.damage(.tags);
 }
 
-pub fn current_layout(self: *Self) union(Layout.Type) {
-    tile: *Layout.Tile,
-    grid: *Layout.Grid,
-    monocle: *Layout.Monocle,
-    deck: *Layout.Deck,
-    scroller: *Layout.Scroller,
-    centered_master: *Layout.CenteredMaster,
-    float,
-} {
+pub fn scroller(self: *Self) *Layout.Scroller {
     std.debug.assert(self.main_tag != 0 and self.main_tag & (self.main_tag - 1) == 0);
 
-    const i = @ctz(self.main_tag);
-    return switch (self.layout_tag[i]) {
-        .float => .float,
-        inline else => |t| @unionInit(@TypeOf(self.current_layout()), @tagName(t), &@field(self.layouts[i], @tagName(t))),
-    };
+    return &self.layouts[@ctz(self.main_tag)].scroller;
 }
 
 pub inline fn scroller_mfact(self: *const Self) f32 {
@@ -316,27 +285,6 @@ pub inline fn scroller_mfact(self: *const Self) f32 {
 
     const i = @ctz(self.main_tag);
     return self.layouts[i].scroller.mfact;
-}
-
-pub fn set_current_layout(self: *Self, layout_t: Layout.Type) void {
-    std.debug.assert(self.main_tag != 0 and self.main_tag & (self.main_tag - 1) == 0);
-
-    const i = @ctz(self.main_tag);
-    if (self.layout_tag[i] == layout_t) return;
-
-    log.debug("<{*}>(tag: {b}) set layout to {s}", .{ self, self.main_tag, @tagName(layout_t) });
-
-    self.prev_layout_tag[i] = self.layout_tag[i];
-    self.layout_tag[i] = layout_t;
-
-    if (comptime build_options.bar_enabled) self.bar.damage(.layout);
-}
-
-pub fn switch_to_previous_layout(self: *Self) void {
-    log.debug("<{*}> tag {b} switch to previous layout", .{ self, self.main_tag });
-
-    const i = @ctz(self.main_tag);
-    self.set_current_layout(self.prev_layout_tag[i]);
 }
 
 pub fn manage(self: *Self) void {
@@ -350,16 +298,12 @@ pub fn manage(self: *Self) void {
     self.animate_tag_change();
     if (self.gesture_peek_tag != 0) self.arrange_peek();
 
-    switch (self.current_layout()) {
-        .float => {},
-        inline else => |layout| layout.arrange(self) catch |err| {
-            log.err("<{*}> arrange windows with {*} failed: {}", .{ self, &layout, err });
-            return;
-        },
-    }
+    self.scroller().arrange(self) catch |err| {
+        log.err("<{*}> arrange windows failed: {}", .{ self, err });
+        return;
+    };
 
     self.shift_tiled(self.gesture_offset_y);
-    if (self.current_layout() != .scroller) self.scroller_prev_focus = null;
 
     log.debug("<{*}> managed", .{self});
 }
@@ -472,13 +416,7 @@ fn permute_tags(self: *Self, perm: *const Permutation) void {
     }
 
     const layouts = self.layouts;
-    const layout_tag = self.layout_tag;
-    const prev_layout_tag = self.prev_layout_tag;
-    for (0..32) |i| {
-        self.layouts[perm[i]] = layouts[i];
-        self.layout_tag[perm[i]] = layout_tag[i];
-        self.prev_layout_tag[perm[i]] = prev_layout_tag[i];
-    }
+    for (0..32) |i| self.layouts[perm[i]] = layouts[i];
 
     if (comptime build_options.bar_enabled) self.bar.damage(.tags);
 }
@@ -490,11 +428,8 @@ fn animate_tag_change(self: *Self) void {
     const step_direction = self.tag_step_direction;
     self.tag_step_direction = 0;
     if (prev == 0 or (prev & self.tag) != 0) return;
-    // floating tags are not arranged, their windows cannot slide
     const prev_main = prev ^ (prev & (prev - 1));
-    if (!ctx.cfg.gesture.animate_bindings or
-        self.current_layout() == .float or self.layout_tag[@ctz(prev_main)] == .float)
-    {
+    if (!ctx.cfg.gesture.animate_bindings) {
         self.gesture_offset_y = 0;
         self.gesture_anim_y_start_ms = null;
         self.gesture_peek_tag = 0;
@@ -513,7 +448,7 @@ fn animate_tag_change(self: *Self) void {
     Gesture.start_settle_y(self, offset);
 }
 
-// arrange the tag revealed by a vertical swipe with its own layout, one screen away
+// arrange the tag revealed by a vertical swipe with its own settings, one screen away
 fn arrange_peek(self: *Self) void {
     const tag = self.tag;
     const main_tag = self.main_tag;
@@ -524,19 +459,16 @@ fn arrange_peek(self: *Self) void {
     self.tag = self.gesture_peek_tag;
     self.main_tag = self.tag ^ (self.tag & (self.tag - 1));
 
-    switch (self.current_layout()) {
-        .float => return,
-        inline else => |layout| layout.arrange(self) catch |err| {
-            log.err("<{*}> arrange peek tag with {*} failed: {}", .{ self, &layout, err });
-            return;
-        },
-    }
+    self.scroller().arrange(self) catch |err| {
+        log.err("<{*}> arrange peek tag failed: {}", .{ self, err });
+        return;
+    };
     self.shift_tiled(self.gesture_offset_y + self.gesture_peek_side * self.exclusive_height());
 }
 
 // move the tiled windows of the current tag vertically, they are re-arranged every manage
 fn shift_tiled(self: *Self, dy: i32) void {
-    if (dy == 0 or self.current_layout() == .float) return;
+    if (dy == 0) return;
     var it = ctx.windows.iterator(.forward);
     while (it.next()) |window| {
         if (!window.is_visible_in(self) or window.floating) continue;
@@ -549,10 +481,6 @@ fn apply_rule(self: *Self, rule: *const config.OutputRule) void {
     if (rule.layout) |layout| for (&self.layouts) |*l| {
         l.* = config.meta.override(l.*, layout);
     };
-    if (rule.default_layout) |default_layout| {
-        self.layout_tag = .{default_layout} ** 32;
-        self.prev_layout_tag = .{default_layout} ** 32;
-    }
 }
 
 fn set_name(self: *Self, name: ?[]const u8) void {

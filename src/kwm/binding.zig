@@ -3,7 +3,6 @@ const math = std.math;
 
 const utils = @import("utils.zig");
 const types = @import("types.zig");
-const layout = @import("layout.zig");
 const Window = @import("window.zig");
 const Output = @import("output.zig");
 const Context = @import("context.zig");
@@ -119,23 +118,17 @@ pub const Action = union(enum) {
     toggle_floating,
     toggle_sticky,
     toggle_swallow,
-    zoom: struct { swap: bool },
-    focus_master_return,
-    switch_layout: struct { layout: layout.Type },
-    switch_to_previous_layout,
+    // center the focused window
+    zoom,
     toggle_bar,
     toggle_overview,
 
     overview_select: struct { direction: Overview.Direction },
     overview_move: struct { direction: Overview.Direction },
     overview_confirm,
-    modify_nmaster: struct { change: enum { increase, decrease } },
     modify_mfact: struct { change: SetStep },
     cycle_scroller_mfact: struct { candidate_mfacts: []const f32 },
     modify_gap: struct { step: i32 },
-    modify_master_location: struct { location: types.LayoutMasterLocation },
-    toggle_grid_direction,
-    toggle_centered_master_direction,
     toggle_auto_swallow,
 
     reload_config,

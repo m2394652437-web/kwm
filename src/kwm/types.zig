@@ -48,17 +48,9 @@ pub const BarArea = enum {
     status,
 };
 
-pub const LayoutMasterLocation = enum {
-    left,
-    right,
-    top,
-    bottom,
-};
-
 pub const WindowAttachMode = enum {
     top,
     bottom,
-    stack_top,
     above_focused,
     below_focused,
 };

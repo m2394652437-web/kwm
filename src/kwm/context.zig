@@ -546,11 +546,8 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
     log.debug("focus iter: {s}", .{@tagName(direction)});
 
     if (self.focused_window()) |window| {
-        const wrap_around = if (window.output.?.current_layout() == .scroller)
-            // like the gesture, two windows or less would only flip back and forth
-            !self.cfg.disable_wrap_around_for_scroller and self.tiled_count(window.output.?) > 2
-        else
-            true;
+        // like the gesture, two windows or less would only flip back and forth
+        const wrap_around = !self.cfg.disable_wrap_around_for_scroller and self.tiled_count(window.output.?) > 2;
 
         var win = window;
         var wrapped = false;
@@ -582,9 +579,7 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
 
                 // on the scroller, bring the wrapped window next to the focused one,
                 // so the strip keeps sliding the same way instead of rewinding
-                if (wrapped and !window.floating and !new_window.floating and
-                    window.output.?.current_layout() == .scroller)
-                {
+                if (wrapped and !window.floating and !new_window.floating) {
                     new_window.link.remove();
                     switch (direction) {
                         .forward => {
@@ -704,7 +699,7 @@ pub fn swap(self: *Self, direction: types.Direction) void {
         if (window.floating) return;
         if (window.fullscreen == .output) return;
 
-        const wrap_around = !self.cfg.disable_wrap_around_for_scroller or window.output.?.current_layout() != .scroller;
+        const wrap_around = !self.cfg.disable_wrap_around_for_scroller;
 
         var win = window;
         while (true) {
@@ -737,29 +732,6 @@ pub fn attach_window(self: *Self, window: *Window, mode: types.WindowAttachMode)
     switch (mode) {
         .top => self.windows.prepend(window),
         .bottom => self.windows.append(window),
-        .stack_top => if (self.current_output) |output| {
-            const nmaster = switch (output.current_layout()) {
-                .tile => |tile| tile.nmaster,
-                .deck => |deck| deck.nmaster,
-                else => 0,
-            };
-
-            if (nmaster == 0) {
-                self.windows.prepend(window);
-            } else {
-                var link: *wl.list.Link = &self.windows.link;
-                defer link.insert(&window.link);
-
-                var i: i32 = 0;
-                var it = self.windows.safeIterator(.forward);
-                while (it.next()) |w| {
-                    if (!w.is_visible_in(output) or w.floating) continue;
-                    link = &w.link;
-                    i += 1;
-                    if (i == nmaster) break;
-                }
-            }
-        } else self.windows.prepend(window), // fallback to prepend if no output
         else => if (self.focused_window()) |focused| {
             switch (mode) {
                 .above_focused => focused.link.prev.?.insert(&window.link),
@@ -1255,9 +1227,7 @@ fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event,
 
             context.attach_window(
                 window,
-                context.cfg.default_attach_mode.getter.get(
-                    if (context.current_output) |output| output.current_layout() else context.cfg.default_layout,
-                ),
+                context.cfg.default_attach_mode,
             );
             context.focus(window, true);
         },

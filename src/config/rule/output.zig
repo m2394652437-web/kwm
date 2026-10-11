@@ -15,7 +15,6 @@ const Pattern = @import("pattern.zig");
 name: ?Pattern = null,
 
 presentation_mode: ?river.OutputV1.PresentationMode = null,
-default_layout: ?kwm.Layout.Type = null,
 layout: ?meta.make_fields_optional(kwm.Layout) = null,
 
 

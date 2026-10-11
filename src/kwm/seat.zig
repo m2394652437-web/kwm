@@ -645,60 +645,10 @@ fn handle_actions(self: *Self) void {
                     window.toggle_swallow();
                 }
             },
-            .zoom => |data| {
+            .zoom => {
                 if (ctx.focused_window()) |window| {
                     if (window.floating) continue;
-
-                    if (window.output) |output| {
-                        switch (output.current_layout()) {
-                            .tile, .deck => {
-                                if (!data.swap) {
-                                    ctx.focus(window, true);
-                                    ctx.shift_to_head(window);
-                                    continue;
-                                }
-
-                                var master = output.master_window() orelse continue;
-                                var new_master = if (window != master) window else ctx.focused_before(window, true) orelse continue;
-
-                                // ensure the old master immediately behind the new master in focus_stack
-                                ctx.focus(master, true);
-                                ctx.focus(new_master, true);
-
-                                // swap old master with new master
-                                master.link.swapWith(&new_master.link);
-                            },
-                            .scroller => window.scroller_x = .center,
-                            else => {},
-                        }
-                    }
-                }
-            },
-            .focus_master_return => {
-                if (ctx.focused_window()) |window| {
-                    if (window.floating) continue;
-                    if (window.output) |output| {
-                        switch (output.current_layout()) {
-                            .tile, .deck => {
-                                const master = output.master_window() orelse continue;
-                                ctx.focus(
-                                    if (window != master) master else ctx.focused_before(window, true) orelse continue,
-                                    true,
-                                );
-                            },
-                            else => {},
-                        }
-                    }
-                }
-            },
-            .switch_layout => |data| {
-                if (ctx.current_output) |output| {
-                    output.set_current_layout(data.layout);
-                }
-            },
-            .switch_to_previous_layout => {
-                if (ctx.current_output) |output| {
-                    output.switch_to_previous_layout();
+                    window.scroller_x = .center;
                 }
             },
             .toggle_bar => {
@@ -711,136 +661,32 @@ fn handle_actions(self: *Self) void {
                 }
             },
 
-            .modify_nmaster => |data| {
-                if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .tile => |tile| switch (data.change) {
-                            .increase => tile.nmaster += 1,
-                            .decrease => tile.nmaster = @max(1, tile.nmaster - 1),
-                        },
-                        .deck => |deck| switch (data.change) {
-                            .increase => deck.nmaster += 1,
-                            .decrease => deck.nmaster = @max(1, deck.nmaster - 1),
-                        },
-                        .centered_master => |centered_master| switch (data.change) {
-                            .increase => centered_master.nmaster += 1,
-                            .decrease => centered_master.nmaster = @max(1, centered_master.nmaster - 1),
-                        },
-                        else => {},
-                    }
-                }
-            },
-
             .cycle_scroller_mfact => |data| {
-                if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .scroller => {
-                            if (ctx.focused_window()) |window| {
-                                if (window.floating or window.output != output) continue;
-                                const mfact = scroller_methods.cycle_mfact(
-                                    window.scroller_mfact,
-                                    data.candidate_mfacts,
-                                );
-                                window.scroller_mfact = @min(1, @max(0, mfact));
-                            }
-                        },
-                        else => {},
-                    }
+                if (ctx.focused_window()) |window| {
+                    if (window.floating or window.output != ctx.current_output) continue;
+                    const mfact = scroller_methods.cycle_mfact(
+                        window.scroller_mfact,
+                        data.candidate_mfacts,
+                    );
+                    window.scroller_mfact = @min(1, @max(0, mfact));
                 }
             },
 
             .modify_mfact => |data| {
                 if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .tile => |tile| {
-                            const mfact = switch (data.change) {
-                                .set => |mfact| mfact,
-                                .step => |step| tile.mfact + step,
-                            };
-                            tile.mfact = @min(1, @max(0, mfact));
-                        },
-                        .deck => |deck| {
-                            const mfact = switch (data.change) {
-                                .set => |mfact| mfact,
-                                .step => |step| deck.mfact + step,
-                            };
-                            deck.mfact = @min(1, @max(0, mfact));
-                        },
-                        .scroller => {
-                            if (ctx.focus_top_in(output, false)) |window| {
-                                const mfact = switch (data.change) {
-                                    .set => |mfact| mfact,
-                                    .step => |step| window.scroller_mfact + step,
-                                };
-                                window.scroller_mfact = @min(1, @max(0, mfact));
-                            }
-                        },
-                        .centered_master => |centered_master| {
-                            const mfact = switch (data.change) {
-                                .set => |mfact| mfact,
-                                .step => |step| centered_master.mfact + step,
-                            };
-                            centered_master.mfact = @min(1, @max(0, mfact));
-                        },
-                        else => {},
+                    if (ctx.focus_top_in(output, false)) |window| {
+                        const mfact = switch (data.change) {
+                            .set => |mfact| mfact,
+                            .step => |step| window.scroller_mfact + step,
+                        };
+                        window.scroller_mfact = @min(1, @max(0, mfact));
                     }
                 }
             },
             .modify_gap => |data| {
                 if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .tile => |tile| tile.inner_gap = @max(ctx.cfg.border.width * 2, tile.inner_gap + data.step),
-                        .grid => |grid| grid.inner_gap = @max(ctx.cfg.border.width * 2, grid.inner_gap + data.step),
-                        .monocle => |monocle| monocle.gap = @max(ctx.cfg.border.width * 2, monocle.gap + data.step),
-                        .deck => |deck| deck.inner_gap = @max(ctx.cfg.border.width * 2, deck.inner_gap + data.step),
-                        .scroller => |scroller| scroller.inner_gap = @max(ctx.cfg.border.width * 2, scroller.inner_gap + data.step),
-                        .centered_master => |centered_master| centered_master.inner_gap = @max(ctx.cfg.border.width * 2, centered_master.inner_gap + data.step),
-                        .float => {},
-                    }
-                }
-            },
-            .modify_master_location => |data| {
-                if (ctx.current_output) |output| blk: {
-                    switch (output.current_layout()) {
-                        .tile => |tile| tile.master_location = data.location,
-                        .deck => |deck| deck.master_location = data.location,
-                        else => break :blk,
-                    }
-                    if (comptime build_options.bar_enabled) {
-                        output.bar.damage(.layout);
-                    }
-                }
-            },
-            .toggle_grid_direction => {
-                if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .grid => |grid| {
-                            grid.direction = switch (grid.direction) {
-                                .horizontal => .vertical,
-                                .vertical => .horizontal,
-                            };
-                            if (comptime build_options.bar_enabled) {
-                                output.bar.damage(.layout);
-                            }
-                        },
-                        else => {},
-                    }
-                }
-            },
-            .toggle_centered_master_direction => {
-                if (ctx.current_output) |output| {
-                    switch (output.current_layout()) {
-                        .centered_master => |centered_master| {
-                            centered_master.direction = switch (centered_master.direction) {
-                                .horizontal => .vertical,
-                                .vertical => .horizontal,
-                            };
-                            if (comptime build_options.bar_enabled) {
-                                output.bar.damage(.layout);
-                            }
-                        },
-                        else => {},
-                    }
+                    const scroller = output.scroller();
+                    scroller.inner_gap = @max(ctx.cfg.border.width * 2, scroller.inner_gap + data.step);
                 }
             },
             .toggle_auto_swallow => {

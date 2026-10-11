@@ -12,18 +12,11 @@ river-window-management-v1 protocol.
 
 # Screenshots
 
-![tile](./images/tile.png)
-
-![grid](./images/grid.png)
-
-![monocle](./images/monocle.png)
-
 ![scroller](./images/scroller.png)
 
 ## Features
 
-- **Layouts:** tile, grid, monocle, deck, scroller, centered master, and
-  floating, with per-tag states
+- **Layout:** scroller only, with per-tag states
 
 - **Tags:** organize windows with tags instead of workspaces, with shift-tags
 support

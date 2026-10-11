@@ -18,7 +18,7 @@ const Scheme = struct {
 const BarArea = union(kwm.BarArea) {
     tags,
     mode: ?[]const u8,
-    layout: ?kwm.Layout.Type,
+    layout,
     title,
     status,
 };
@@ -60,15 +60,7 @@ mode: ?struct {
 },
 
 layout: ?struct {
-    tags: struct {
-        tile: meta.enum_struct(kwm.Layout.Tile.MasterLocation, []const u8),
-        grid: meta.enum_struct(kwm.Layout.Grid.Direction, []const u8),
-        monocle: []const u8,
-        deck: meta.enum_struct(kwm.Layout.Deck.MasterLocation, []const u8),
-        scroller: []const u8,
-        centered_master: meta.enum_struct(kwm.Layout.CenteredMaster.Direction, []const u8),
-        float: []const u8,
-    },
+    tag: []const u8,
     click: meta.enum_struct(
         kwm.Button,
         ?kwm.BindingAction
@@ -104,9 +96,6 @@ override_colors: []const struct {
         return switch (area) {
             .mode => |mode|
                 if (self.area.mode) |m| mem.eql(u8, mode.?, m)
-                else true,
-            .layout => |layout|
-                if (self.area.layout) |l| layout.? == l
                 else true,
             else => true,
         };

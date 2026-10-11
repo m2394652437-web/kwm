@@ -304,7 +304,7 @@ fn rubber(offset: i32, limit: i32) i32 {
 fn damp_x(output: *Output, offset: i32) i32 {
     if (offset == 0) return 0;
     const focus_top = ctx.focus_top_in(output, true) orelse return offset;
-    const column = focus_top.width + output.current_layout().scroller.inner_gap;
+    const column = focus_top.width + output.scroller().inner_gap;
     const beyond: i32 = @intCast(windows_beyond(output, focus_top, offset < 0));
     return rubber(offset, beyond * column);
 }
@@ -403,7 +403,7 @@ fn fill_edge(output: *Output, offset: i32) void {
     if (ctx.cfg.disable_wrap_around_for_scroller or offset == 0) return;
 
     const focus_top = ctx.focus_top_in(output, true) orelse return;
-    const gap = output.current_layout().scroller.inner_gap;
+    const gap = output.scroller().inner_gap;
     const column = focus_top.width + gap;
     if (column <= 0) return;
     // columns that have to exist beyond the focused window to cover the drag
@@ -470,7 +470,7 @@ fn tag_output() ?*Output {
     if (ctx.overview.active) return null;
     const output = ctx.current_output orelse return null;
     if (output.fullscreen_window() != null) return null;
-    return if (output.current_layout() == .float) null else output;
+    return output;
 }
 
 
@@ -487,22 +487,15 @@ fn set_peek(output: *Output, offset: i32) void {
         output.gesture_peek_tag = 0;
         return;
     }
-    // a floating tag is not arranged, its windows would show up at random places
-    const peek_main = peek ^ (peek & (peek - 1));
-    if (output.layout_tag[@ctz(peek_main)] == .float) {
-        output.gesture_peek_tag = 0;
-        return;
-    }
     output.gesture_peek_tag = peek;
     output.gesture_peek_side = if (forward) 1 else -1;
 }
 
 
-// the current output if it is showing the scroller layout, which can follow the fingers
+// the current output, its scroller can follow the fingers
 fn scroller_output() ?*Output {
     if (ctx.overview.active) return null;
-    const output = ctx.current_output orelse return null;
-    return if (output.current_layout() == .scroller) output else null;
+    return ctx.current_output;
 }
 
 
@@ -510,7 +503,7 @@ fn scroller_output() ?*Output {
 fn scroll_steps(output: *Output, dx: f64) usize {
     if (@abs(dx) < ctx.cfg.gesture.threshold) return 0;
     const focus_top = ctx.focus_top_in(output, true) orelse return 0;
-    const column: f64 = @floatFromInt(focus_top.width + output.current_layout().scroller.inner_gap);
+    const column: f64 = @floatFromInt(focus_top.width + output.scroller().inner_gap);
     const offset = @abs(dx * ctx.cfg.gesture.scroll_factor);
     // a short flick past the threshold still moves one column
     const steps = @max(1, @as(usize, @intFromFloat(@round(offset / column))));

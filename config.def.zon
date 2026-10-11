@@ -72,43 +72,17 @@
         },
         // set null to disable layout part
         .layout = .{
-            // layout tags show on bar
+            // layout tag shows on bar
             // {{?}} will be replaced with managed window count, when the count is 0, `?` will be used as replacement.
-            // e.g. [{{{=}}], when managed window count > 0, [N] will be showed, else [=] will be showed
-            .tags = .{
-                .tile = .{
-                    .left = "[]=",
-                    .right = "=[]",
-                    .top = "[^]",
-                    .bottom = "[_]",
-                },
-                .grid = .{
-                    .horizontal = "|+|",
-                    .vertical = "|||",
-                },
-                .monocle = "[{{=}}]",
-                .deck = .{
-                    .left = "[{{D}}]=",
-                    .right = "=[{{D}}]",
-                    .top = "[{{D}}^]",
-                    .bottom = "[{{D}}_]",
-                },
-                .scroller = "[==]",
-                .centered_master = .{
-                    .horizontal = "=[]=",
-                    .vertical = "=[V]="
-                },
-                .float = "><>",
-            },
+            // e.g. [{{=}}], when managed window count > 0, [N] will be showed, else [=] will be showed
+            .tag = "[==]",
 
-            .click = .{
-                .left = .switch_to_previous_layout,
-            },
+            .click = .{},
         },
         // set null to disable title part
         .title = .{
             .click = .{
-                .left = .{ .zoom = .{ .swap = false } },
+                .left = .zoom,
             },
         },
         // set null to disable status part
@@ -125,7 +99,7 @@
             // areas:
             //      .tags
             //      .{ .mode = "floating" or other modes }, null will match all mode
-            //      .{ layout = .tile or other layout }, null will match all layouts
+            //      .layout
             //      .title
             //      .status
             //
@@ -173,11 +147,11 @@
     // .on_output_changed: warp cursor to the center of output focused
     .cursor_warp = .none,
 
-    // disable wrap around when iter focus or swap window in scroller layout
+    // disable wrap around when iter focus or swap window
     .disable_wrap_around_for_scroller = false,
 
     // touchpad swipe gestures, read from libinput directly (requires the `input` group)
-    //  horizontal swipe: scroll the scroller layout (other layouts: focus next/previous window)
+    //  horizontal swipe: scroll the windows
     //  vertical swipe:   switch to the next/previous tag
     .gesture = .{
         .enabled = true,
@@ -205,18 +179,9 @@
 
     // .top: stack top
     // .bottom: stack bottom
-    // .stack_top: for tile and deck layout
     // .above_focused
     // .below_focused
-    .default_attach_mode = .{
-        .tile = .top,
-        .grid = .top,
-        .monocle = .top,
-        .deck = .stack_top,
-        .scroller = .below_focused,
-        .centered_master = .top,
-        .float = .top,
-    },
+    .default_attach_mode = .below_focused,
 
     // .csd
     // .ssd
@@ -232,64 +197,11 @@
         },
     },
 
-    // .tile
-    // .grid
-    // .monocle
-    // .deck
-    // .scroller
-    // .centered_master
-    // .float
-    .default_layout = .tile,
     .layout = .{
-        .tile = .{
-            .nmaster = 1,
-            .mfact = 0.55,
-            .inner_gap = 12,
-            .outer_gap = 9,
-
-            // .left
-            // .right
-            // .top
-            // .bottom
-            .master_location = .left,
-        },
-        .grid = .{
-            .outer_gap = 9,
-            .inner_gap = 12,
-
-            // .horizontal
-            // .vertical
-            .direction = .horizontal,
-        },
-        .monocle = .{
-            .gap = 9,
-        },
-        .deck = .{
-            .nmaster = 1,
-            .mfact = 0.55,
-            .inner_gap = 12,
-            .outer_gap = 9,
-
-            // .left
-            // .right
-            // .top
-            // .bottom
-            .master_location = .left,
-        },
         .scroller = .{
             .mfact = 0.5,
             .inner_gap = 16,
             .outer_gap = 9,
-        },
-        .centered_master = .{
-            .nmaster = 1,
-            .mfact = 0.55,
-            .inner_gap = 12,
-            .outer_gap = 9,
-
-            // .horizontal
-            // .vertical
-            .direction = .horizontal,
         },
     },
 
@@ -542,27 +454,7 @@
                 .modifiers = .{ .mod4 = true },
                 .event = .{
                     .click = .{
-                        .pressed = .{
-                            .zoom = .{ .swap = true },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "h",
-                .modifiers = .{ .mod4 = true, .ctrl = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .focus_master_return,
-                    },
-                },
-            },
-            .{
-                .keysym = "l",
-                .modifiers = .{ .mod4 = true, .ctrl = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .focus_master_return,
+                        .pressed = .zoom,
                     },
                 },
             },
@@ -763,15 +655,6 @@
                 },
             },
             .{
-                .keysym = "space",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .switch_to_previous_layout,
-                    },
-                },
-            },
-            .{
                 .keysym = "f",
                 .modifiers = .{ .mod4 = true },
                 .event = .{
@@ -795,83 +678,6 @@
                 .event = .{
                     .click = .{
                         .pressed = .toggle_swallow,
-                    },
-                },
-            },
-            .{
-                .keysym = "f",
-                .modifiers = .{ .mod4 = true, .mod1 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .float },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "t",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .tile },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "g",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .grid },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "d",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .deck },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "m",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .monocle },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "s",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .scroller },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "u",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .switch_layout = .{ .layout = .centered_master },
-                        },
                     },
                 },
             },
@@ -994,72 +800,6 @@
                 },
             },
             .{
-                .keysym = "j",
-                .modifiers = .{ .mod4 = true, .mod1 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_master_location = .{ .location = .bottom },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "k",
-                .modifiers = .{ .mod4 = true, .mod1 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_master_location = .{ .location = .top },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "l",
-                .modifiers = .{ .mod4 = true, .mod1 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_master_location = .{ .location = .right },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "h",
-                .modifiers = .{ .mod4 = true, .mod1 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_master_location = .{ .location = .left },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "equal",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_nmaster = .{ .change = .increase },
-                        },
-                    },
-                },
-            },
-            .{
-                .keysym = "minus",
-                .modifiers = .{ .mod4 = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .{
-                            .modify_nmaster = .{ .change = .decrease },
-                        },
-                    },
-                },
-            },
-            .{
                 .keysym = "equal",
                 .modifiers = .{ .mod4 = true, .mod1 = true },
                 .event = .{
@@ -1087,24 +827,6 @@
                 .event = .{
                     .click = .{
                         .pressed = .toggle_auto_swallow,
-                    },
-                },
-            },
-            .{
-                .keysym = "g",
-                .modifiers = .{ .mod4 = true, .shift = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .toggle_grid_direction,
-                    },
-                },
-            },
-            .{
-                .keysym = "u",
-                .modifiers = .{ .mod4 = true, .shift = true },
-                .event = .{
-                    .click = .{
-                        .pressed = .toggle_centered_master_direction,
                     },
                 },
             },
@@ -1200,7 +922,7 @@
     //      decoration: .csd or .ssd, window decoration
     //      is_terminal: bool, if set true, means the window could be swallowed
     //      disable_swallow: bool, if set true, the window could not swallow any other windows
-    //      scroller_mfact: f32, initial mfact of the window for scroller layout
+    //      scroller_mfact: f32, initial mfact of the window
     //      attach_mode: like `default_attach_mode`, change attach_mode for window matched
     .window_rules = .{
         .{ .app_id = .{ .str = "", .match_null = true }, .floating = true },
@@ -1217,7 +939,6 @@
     //
     //      presentation_mode: presentation mode, .vsync or .async
     //      layout: same as `layout` before but you only need to specify the values you want to change
-    //      default_layout: same as `default_layout` before
     .output_rules = .{
         //
     },

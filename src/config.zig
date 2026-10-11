@@ -70,7 +70,7 @@ pub const Config = struct {
 
     auto_swallow: bool,
 
-    default_attach_mode: meta.enum_struct(kwm.Layout.Type, kwm.WindowAttachMode),
+    default_attach_mode: kwm.WindowAttachMode,
 
     default_window_decoration: kwm.WindowDecoration,
 
@@ -83,7 +83,6 @@ pub const Config = struct {
         }
     },
 
-    default_layout: kwm.Layout.Type,
     layout: kwm.Layout,
 
     bindings: struct {

@@ -419,9 +419,6 @@ pub fn set_border(self: *Self, width: i32, rgb: u32) void {
 }
 
 pub fn ensure_floating(self: *Self) void {
-    if (self.output) |output| {
-        if (output.current_layout() == .float) return;
-    }
     self.toggle_floating(true);
 }
 
@@ -488,12 +485,9 @@ pub fn toggle_sticky(self: *Self) void {
     }
 }
 
-// if the window is managed by any layout
+// if the window is arranged by the scroller
 pub fn managed_by_layout(self: *const Self) bool {
-    return if (self.output) |output|
-        if (output.current_layout() == .float) false else !self.floating
-    else
-        false;
+    return self.output != null and !self.floating;
 }
 
 pub fn is_visible(self: *Self) bool {

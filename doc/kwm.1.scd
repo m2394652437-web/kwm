@@ -53,11 +53,7 @@ Mod4-Shift-c
 	Close the window.
 
 Mod4-Return
-	Move the window on top of the stack or swap with the previous master window.
-
-Mod4-Ctrl-\[hl\]
-	Focus the master window from anywhere on the stack or return to the
-	previous window.
+	Center the window.
 
 Mod4-b
 	Toggle the status bar.
@@ -86,9 +82,6 @@ Mod4-Shift-f
 Mod4-Shift-e
 	Toggle maximize on the window.
 
-Mod4-space
-	Switch to the previous layout.
-
 Mod4-f
 	Toggle floating on the window.
 
@@ -97,27 +90,6 @@ Mod4-Ctrl-s
 
 Mod4-a
 	Toggle swallow on the window.
-
-Mod1-Mod4-f
-	Switch to the floating layout.
-
-Mod4-t
-	Switch to the tile layout.
-
-Mod4-g
-	Switch to the grid layout.
-
-Mod4-d
-	Switch to the deck layout.
-
-Mod4-m
-	Switch to the monocle layout.
-
-Mod4-s
-	Switch to the scroller layout.
-
-Mod4-u
-	Switch to the centered master layout.
 
 Mod4-Tab
 	Switch to the previous tag.
@@ -147,25 +119,13 @@ Mod4-Ctrl-Shift-[1-9]
 	Toggle the window tag.
 
 Mod4-\[hl\]
-	Decrease/increase the master area size.
-
-Mod1-Mod4-\[hjkl\]
-	Set tile layout's master location to left/bottom/top/right.
-
-Mod4-\[-=\]
-	Decrease/increase the number of windows in master area.
+	Decrease/increase the window width.
 
 Mod1-Mod4-\[-=\]
 	Decrease/increase the gaps.
 
 Mod4-Shift-a
 	Toggle auto swallow.
-
-Mod4-Shift-g
-	Toggle grid layout's direction.
-
-Mod4-Shift-u
-	Toggle centered master layout's direction.
 
 Mod4-p
 	Spawn _wmenu-run_.
@@ -200,9 +160,8 @@ Mod4-Shift-\[hjkl\]
 
 Button1
 	Click on a tag label to set the output tag.++
-	Click on layout label to switch to the previous layout.++
 	Click on mode label to switch to the default mode.++
-	Click on title label to move the window on top of the stack.
+	Click on title label to center the window.
 
 Button2
 	Click on a tag to toggle the window tag.++
