@@ -53,25 +53,13 @@ const SWIPE_UPDATE = 801;
 const SWIPE_END = 802;
 
 
-// minimum accumulated (unaccelerated) distance to trigger an action
-const threshold = 100;
 // distance before the swipe axis is locked
 const axis_lock_distance = 16;
-// pixels the scroller moves per unit of touchpad movement
-const scroll_factor = 1.5;
-// pixels the tags move per unit of vertical touchpad movement
-const tag_scroll_factor = 2.0;
 
-// duration of the settle animation after release
-const settle_ms = 250;
 // interval between animation frames
 const frame_ms = 8;
 // movement within this window before release decides the fling velocity
 const velocity_window_us = 100 * std.time.us_per_ms;
-// a fling continues as if the fingers kept moving at release speed for this long
-const fling_s = 0.1;
-// how far past the reachable range a drag can stretch (pixels)
-const rubber_band = 120;
 
 const Axis = enum { undecided, horizontal, vertical };
 
@@ -130,10 +118,10 @@ fn handle_event(self: *Self, event: *Event) void {
         else => return,
     }
     const g = libinput_event_get_gesture_event(event);
-    if (libinput_event_gesture_get_finger_count(g) != 3) return;
+    if (libinput_event_gesture_get_finger_count(g) != ctx.cfg.gesture.fingers) return;
 
     // libinput is read directly, so the lock screen has to be respected here
-    if (mem.eql(u8, ctx.mode, config.lock_mode)) {
+    if (!ctx.cfg.gesture.enabled or mem.eql(u8, ctx.mode, config.lock_mode)) {
         self.abort();
         return;
     }
@@ -185,7 +173,7 @@ fn handle_event(self: *Self, event: *Event) void {
             }
 
             if (self.tracking_y) |output| {
-                const offset = output.gesture_base + @as(i32, @intFromFloat(@round(self.dy * tag_scroll_factor)));
+                const offset = output.gesture_base + @as(i32, @intFromFloat(@round(self.dy * ctx.cfg.gesture.tag_scroll_factor)));
                 set_peek(output, offset);
                 // nothing to reveal: resist instead of moving freely
                 output.gesture_offset_y = if (output.gesture_peek_tag == 0) rubber(offset, 0) else offset;
@@ -193,7 +181,7 @@ fn handle_event(self: *Self, event: *Event) void {
             }
 
             if (self.tracking) |output| {
-                const offset = output.gesture_base + @as(i32, @intFromFloat(@round(self.dx * scroll_factor)));
+                const offset = output.gesture_base + @as(i32, @intFromFloat(@round(self.dx * ctx.cfg.gesture.scroll_factor)));
                 fill_edge(output, offset);
                 output.gesture_offset_x = damp_x(output, offset);
                 ctx.rwm.manageDirty();
@@ -203,15 +191,15 @@ fn handle_event(self: *Self, event: *Event) void {
             const cancelled = libinput_event_gesture_get_cancelled(g) != 0;
             // where the fingers would have ended up had they kept their release speed
             const vx, const vy = self.velocity(libinput_event_gesture_get_time_usec(g));
-            const px = self.dx + vx * fling_s;
-            const py = self.dy + vy * fling_s;
+            const px = self.dx + vx * ctx.cfg.gesture.fling;
+            const py = self.dy + vy * ctx.cfg.gesture.fling;
             log.debug("swipe end dx={d:.2} dy={d:.2} projected=({d:.2}, {d:.2}) cancelled={}", .{ self.dx, self.dy, px, py, cancelled });
 
             if (self.tracking) |output| {
                 defer self.tracking = null;
                 if (!cancelled) {
                     // a fling may go further than the drag, make sure there is something to land on
-                    fill_edge(output, output.gesture_base + @as(i32, @intFromFloat(@round(px * scroll_factor))));
+                    fill_edge(output, output.gesture_base + @as(i32, @intFromFloat(@round(px * ctx.cfg.gesture.scroll_factor))));
                 }
                 const steps = if (cancelled) 0 else scroll_steps(output, px);
                 // remember where the current window is on screen, the next arrange
@@ -230,7 +218,7 @@ fn handle_event(self: *Self, event: *Event) void {
                 const offset = output.gesture_offset_y;
                 // the fling has to point the same way as the revealed tag
                 const towards_peek = (py < 0) == (offset < 0);
-                if (!cancelled and @abs(py) >= threshold and towards_peek and output.gesture_peek_tag != 0) {
+                if (!cancelled and @abs(py) >= ctx.cfg.gesture.threshold and towards_peek and output.gesture_peek_tag != 0) {
                     // switch to the revealed tag, it keeps its on-screen position and
                     // slides in while the old tag becomes the one sliding out
                     const old_tag = output.tag;
@@ -239,7 +227,7 @@ fn handle_event(self: *Self, event: *Event) void {
                     output.gesture_peek_tag = old_tag;
                     output.gesture_peek_side = -side;
                     start_settle_y(output, offset + side * output.exclusive_height());
-                } else if (!cancelled and @abs(py) >= threshold and output.gesture_peek_tag == 0 and peek_exists(output, py)) {
+                } else if (!cancelled and @abs(py) >= ctx.cfg.gesture.threshold and output.gesture_peek_tag == 0 and peek_exists(output, py)) {
                     // nothing to preview (floating tag), switch without the slide
                     output.gesture_offset_y = 0;
                     trigger(.{ .set_output_tag = .{ .tag = .{ .direction = if (py < 0) .forward else .reverse } } });
@@ -303,7 +291,8 @@ fn rubber(offset: i32, limit: i32) i32 {
     const magnitude: i32 = @intCast(@abs(offset));
     if (magnitude <= limit) return offset;
     const over: f64 = @floatFromInt(magnitude - limit);
-    const stretched = limit + @as(i32, @intFromFloat(@round(rubber_band * over / (over + rubber_band))));
+    const band: f64 = @floatFromInt(ctx.cfg.gesture.rubber_band);
+    const stretched = limit + @as(i32, @intFromFloat(@round(band * over / (over + band))));
     return if (offset < 0) -stretched else stretched;
 }
 
@@ -343,7 +332,7 @@ pub fn start_settle(output: *Output, from: i32) void {
 
 
 // start animating `output`'s vertical offset from `from` back to 0, the peek tag goes away at the end
-fn start_settle_y(output: *Output, from: i32) void {
+pub fn start_settle_y(output: *Output, from: i32) void {
     output.gesture_offset_y = from;
     if (from == 0) {
         output.gesture_anim_y_start_ms = null;
@@ -393,7 +382,7 @@ fn tick(_: *Context) void {
 
 // offset at `now` of an animation from `from` to 0, null once finished
 fn ease(now: i64, start: i64, from: f64) ?i32 {
-    const t = @as(f64, @floatFromInt(now - start)) / settle_ms;
+    const t = @as(f64, @floatFromInt(now - start)) / @as(f64, @floatFromInt(ctx.cfg.gesture.settle_ms));
     if (t >= 1) return null;
     // ease-out cubic: fast at first, slows down near the resting position
     return @intFromFloat(@round(from * std.math.pow(f64, 1 - t, 3)));
@@ -516,10 +505,10 @@ fn scroller_output() ?*Output {
 
 // how many columns to move after a horizontal swipe on the scroller
 fn scroll_steps(output: *Output, dx: f64) usize {
-    if (@abs(dx) < threshold) return 0;
+    if (@abs(dx) < ctx.cfg.gesture.threshold) return 0;
     const focus_top = ctx.focus_top_in(output, true) orelse return 0;
     const column: f64 = @floatFromInt(focus_top.width + output.current_layout().scroller.inner_gap);
-    const offset = @abs(dx * scroll_factor);
+    const offset = @abs(dx * ctx.cfg.gesture.scroll_factor);
     // a short flick past the threshold still moves one column
     const steps = @max(1, @as(usize, @intFromFloat(@round(offset / column))));
     // never go past the end, wrapping around would jump across the whole strip
@@ -548,10 +537,10 @@ fn windows_beyond(output: *Output, focus_top: *Window, forward: bool) usize {
 fn resolve_action(self: *const Self) ?binding.Action {
     // like niri: fingers move left -> content moves left -> go to the next one
     if (@abs(self.dx) >= @abs(self.dy)) {
-        if (@abs(self.dx) < threshold) return null;
+        if (@abs(self.dx) < ctx.cfg.gesture.threshold) return null;
         return .{ .focus_iter = .{ .direction = if (self.dx < 0) .forward else .reverse } };
     } else {
-        if (@abs(self.dy) < threshold) return null;
+        if (@abs(self.dy) < ctx.cfg.gesture.threshold) return null;
         return .{ .set_output_tag = .{ .tag = .{ .direction = if (self.dy < 0) .forward else .reverse } } };
     }
 }

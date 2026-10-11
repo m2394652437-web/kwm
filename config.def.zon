@@ -170,6 +170,28 @@
     // disable wrap around when iter focus or swap window in scroller layout
     .disable_wrap_around_for_scroller = false,
 
+    // touchpad swipe gestures, read from libinput directly (requires the `input` group)
+    //  horizontal swipe: scroll the scroller layout (other layouts: focus next/previous window)
+    //  vertical swipe:   switch to the next/previous tag
+    .gesture = .{
+        .enabled = true,
+        // number of fingers of the swipe
+        .fingers = 3,
+        // minimum (unaccelerated) touchpad distance for a swipe to switch window/tag
+        .threshold = 100,
+        // pixels moved per unit of touchpad movement
+        .scroll_factor = 1.5,
+        .tag_scroll_factor = 2.0,
+        // a fling continues as if the fingers kept their release speed for this many seconds
+        .fling = 0.1,
+        // how far (pixels) a drag can stretch past the last window/tag
+        .rubber_band = 120,
+        // duration of the settle animation
+        .settle_ms = 250,
+        // also animate focus/tag changes made by key bindings, clicks, new windows...
+        .animate_bindings = true,
+    },
+
     // if to remember last floating geometry
     .remember_floating_geometry = false,
 

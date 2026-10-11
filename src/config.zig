@@ -52,6 +52,18 @@ pub const Config = struct {
 
     disable_wrap_around_for_scroller: bool,
 
+    gesture: struct {
+        enabled: bool,
+        fingers: i32,
+        threshold: f64,
+        scroll_factor: f64,
+        tag_scroll_factor: f64,
+        fling: f64,
+        rubber_band: i32,
+        settle_ms: u32,
+        animate_bindings: bool,
+    },
+
     remember_floating_geometry: bool,
 
     auto_swallow: bool,
