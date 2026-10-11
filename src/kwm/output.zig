@@ -67,6 +67,9 @@ gesture_anim_y_from: f64 = 0,
 gesture_anim_y_start_ms: ?i64 = null,
 // tag shown by the last arrange, to animate tag switches; 0 if unknown
 gesture_prev_tag: u32 = 0,
+// direction of the last step_tag (1: next, -1: previous, 0: none), so a wrap-around
+// still slides in from the direction of travel
+tag_step_direction: i32 = 0,
 // focused window of the last scroller arrange, to animate focus changes
 scroller_prev_focus: ?*Window = null,
 layout_tag: [32]Layout.Type,
@@ -402,29 +405,15 @@ pub fn ring_neighbor(self: *const Self, base: u32, direction: types.Direction) u
     return @as(u32, 1) << @intCast(next);
 }
 
-// switch to the next/previous workspace; past the end, the workspace from the other end
-// is moved over first, so it comes in from the side the user is moving to
+// switch to the next/previous workspace, wrapping around at both ends
 pub fn step_tag(self: *Self, direction: types.Direction) void {
     // windows may have been closed since the last arrange
     self.normalize_tags();
-    const n = self.workspace_count();
-    if (n < 2) return;
-    const current = @ctz(self.main_tag);
-
-    var perm: Permutation = identity;
-    switch (direction) {
-        .forward => if (current + 1 >= n) {
-            // first workspace goes after the last one
-            perm[0] = @intCast(n - 1);
-            for (1..n) |i| perm[i] = @intCast(i - 1);
-        },
-        .reverse => if (current == 0) {
-            // last workspace goes before the first one
-            perm[n - 1] = 0;
-            for (0..n - 1) |i| perm[i] = @intCast(i + 1);
-        },
-    }
-    self.permute_tags(&perm);
+    if (self.workspace_count() < 2) return;
+    self.tag_step_direction = switch (direction) {
+        .forward => 1,
+        .reverse => -1,
+    };
     self.set_tag(self.ring_neighbor(self.main_tag, direction));
 }
 
@@ -498,6 +487,8 @@ fn permute_tags(self: *Self, perm: *const Permutation) void {
 fn animate_tag_change(self: *Self) void {
     const prev = self.gesture_prev_tag;
     self.gesture_prev_tag = self.tag;
+    const step_direction = self.tag_step_direction;
+    self.tag_step_direction = 0;
     if (prev == 0 or (prev & self.tag) != 0) return;
     // floating tags are not arranged, their windows cannot slide
     const prev_main = prev ^ (prev & (prev - 1));
@@ -510,8 +501,9 @@ fn animate_tag_change(self: *Self) void {
         return;
     }
 
-    // a later tag comes in from below, an earlier one from above
-    const from_below = @ctz(self.main_tag) > @ctz(prev_main);
+    // the next tag comes in from below, the previous one from above, also when wrapping;
+    // for direct jumps compare the positions
+    const from_below = if (step_direction != 0) step_direction > 0 else @ctz(self.main_tag) > @ctz(prev_main);
     const side: i32 = if (from_below) -1 else 1;
     // the previous tag stays where it is now (still moving if a switch was animating),
     // the new one starts right next to it
