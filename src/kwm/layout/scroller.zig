@@ -21,6 +21,16 @@ pub fn arrange(self: *const Self, output: *Output) !void {
 
     const focus_top = ctx.focus_top_in(output, true) orelse return;
 
+    // focus moved since the last arrange (key binding, click, new window): slide instead of jumping
+    if (output.gesture_anchor == null and ctx.cfg.gesture.animate_bindings) {
+        if (output.scroller_prev_focus) |prev| if (prev != focus_top) {
+            if (find_tiled(output, prev)) |window| {
+                output.gesture_anchor = .{ .window = window, .x = window.x };
+            }
+        };
+    }
+    output.scroller_prev_focus = focus_top;
+
     const available_width = output.exclusive_width();
     const available_height = output.exclusive_height();
 

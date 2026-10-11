@@ -16,6 +16,7 @@ const utils = @import("utils.zig");
 const Layout = @import("layout.zig");
 const Context = @import("context.zig");
 const Window = @import("window.zig");
+const Gesture = @import("gesture.zig");
 const types = @import("types.zig");
 
 pub const State = struct {
@@ -64,6 +65,10 @@ gesture_peek_side: i32 = 1,
 // settle animation of gesture_offset_y back to 0
 gesture_anim_y_from: f64 = 0,
 gesture_anim_y_start_ms: ?i64 = null,
+// tag shown by the last arrange, to animate tag switches; 0 if unknown
+gesture_prev_tag: u32 = 0,
+// focused window of the last scroller arrange, to animate focus changes
+scroller_prev_focus: ?*Window = null,
 layout_tag: [32]Layout.Type,
 prev_layout_tag: [32]Layout.Type,
 
@@ -333,10 +338,12 @@ pub fn switch_to_previous_layout(self: *Self) void {
 
 pub fn manage(self: *Self) void {
     if (ctx.overview.active) {
+        self.scroller_prev_focus = null;
         ctx.overview.arrange(self);
         return;
     }
 
+    self.animate_tag_change();
     if (self.gesture_peek_tag != 0) self.arrange_peek();
 
     switch (self.current_layout()) {
@@ -348,8 +355,29 @@ pub fn manage(self: *Self) void {
     }
 
     self.shift_tiled(self.gesture_offset_y);
+    if (self.current_layout() != .scroller) self.scroller_prev_focus = null;
 
     log.debug("<{*}> managed", .{self});
+}
+
+// slide between tags when the tag was switched by other means than a swipe
+fn animate_tag_change(self: *Self) void {
+    const prev = self.gesture_prev_tag;
+    self.gesture_prev_tag = self.tag;
+    if (prev == 0 or (prev & self.tag) != 0) return;
+    if (!ctx.cfg.gesture.animate_bindings) return;
+    // a swipe animates its own switch
+    if (self.gesture_anim_y_start_ms != null or self.gesture_offset_y != 0 or self.gesture_peek_tag != 0) return;
+    // floating tags are not arranged, their windows cannot slide
+    const prev_main = prev ^ (prev & (prev - 1));
+    if (self.current_layout() == .float or self.layout_tag[@ctz(prev_main)] == .float) return;
+
+    // a later tag comes in from below, an earlier one from above
+    const from_below = @ctz(self.main_tag) > @ctz(prev_main);
+    const height = self.exclusive_height();
+    self.gesture_peek_tag = prev;
+    self.gesture_peek_side = if (from_below) -1 else 1;
+    Gesture.start_settle_y(self, if (from_below) height else -height);
 }
 
 // arrange the tag revealed by a vertical swipe with its own layout, one screen away
