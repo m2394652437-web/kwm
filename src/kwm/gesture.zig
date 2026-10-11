@@ -224,6 +224,8 @@ fn handle_event(self: *Self, event: *Event) void {
                     const old_tag = output.tag;
                     const side = output.gesture_peek_side;
                     trigger(.{ .set_output_tag = .{ .tag = .{ .tag = output.gesture_peek_tag } } });
+                    // the switch is animated here, the next arrange must not animate it again
+                    output.gesture_prev_tag = output.gesture_peek_tag;
                     output.gesture_peek_tag = old_tag;
                     output.gesture_peek_side = -side;
                     start_settle_y(output, offset + side * output.exclusive_height());

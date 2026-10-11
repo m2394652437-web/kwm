@@ -365,19 +365,26 @@ fn animate_tag_change(self: *Self) void {
     const prev = self.gesture_prev_tag;
     self.gesture_prev_tag = self.tag;
     if (prev == 0 or (prev & self.tag) != 0) return;
-    if (!ctx.cfg.gesture.animate_bindings) return;
-    // a swipe animates its own switch
-    if (self.gesture_anim_y_start_ms != null or self.gesture_offset_y != 0 or self.gesture_peek_tag != 0) return;
     // floating tags are not arranged, their windows cannot slide
     const prev_main = prev ^ (prev & (prev - 1));
-    if (self.current_layout() == .float or self.layout_tag[@ctz(prev_main)] == .float) return;
+    if (!ctx.cfg.gesture.animate_bindings or
+        self.current_layout() == .float or self.layout_tag[@ctz(prev_main)] == .float)
+    {
+        self.gesture_offset_y = 0;
+        self.gesture_anim_y_start_ms = null;
+        self.gesture_peek_tag = 0;
+        return;
+    }
 
     // a later tag comes in from below, an earlier one from above
     const from_below = @ctz(self.main_tag) > @ctz(prev_main);
-    const height = self.exclusive_height();
+    const side: i32 = if (from_below) -1 else 1;
+    // the previous tag stays where it is now (still moving if a switch was animating),
+    // the new one starts right next to it
+    const offset = self.gesture_offset_y - side * self.exclusive_height();
     self.gesture_peek_tag = prev;
-    self.gesture_peek_side = if (from_below) -1 else 1;
-    Gesture.start_settle_y(self, if (from_below) height else -height);
+    self.gesture_peek_side = side;
+    Gesture.start_settle_y(self, offset);
 }
 
 // arrange the tag revealed by a vertical swipe with its own layout, one screen away
