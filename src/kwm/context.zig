@@ -553,10 +553,19 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
     log.debug("focus iter: {s}", .{@tagName(direction)});
 
     if (self.focused_window()) |window| {
-        const wrap_around = !self.cfg.disable_wrap_around_for_scroller or window.output.?.current_layout() != .scroller;
+        const wrap_around = if (window.output.?.current_layout() == .scroller)
+            // like the gesture, two windows or less would only flip back and forth
+            !self.cfg.disable_wrap_around_for_scroller and self.tiled_count(window.output.?) > 2
+        else
+            true;
 
         var win = window;
+        var wrapped = false;
         while (true) {
+            if (switch (direction) {
+                .forward => win.link.next,
+                .reverse => win.link.prev,
+            } == &self.windows.link) wrapped = true;
             const new_window = switch (direction) {
                 inline else => |d| utils.cycle_list(
                     Window,
@@ -578,11 +587,40 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
                     .nonfloating => if (!new_window.floating) continue,
                 }
 
+                // on the scroller, bring the wrapped window next to the focused one,
+                // so the strip keeps sliding the same way instead of rewinding
+                if (wrapped and !window.floating and !new_window.floating and
+                    window.output.?.current_layout() == .scroller)
+                {
+                    new_window.link.remove();
+                    switch (direction) {
+                        .forward => {
+                            window.link.insert(&new_window.link);
+                            // let the layout place it at the right edge
+                            new_window.scroller_x = null;
+                        },
+                        .reverse => {
+                            window.link.prev.?.insert(&new_window.link);
+                            // anything left of the right edge makes it rest at the left edge
+                            new_window.scroller_x = .{ .x = 0 };
+                        },
+                    }
+                }
+
                 self.focus(new_window, true);
                 break;
             }
         }
     }
+}
+
+fn tiled_count(self: *Self, output: *Output) usize {
+    var count: usize = 0;
+    var it = self.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.is_visible_in(output) and !window.floating) count += 1;
+    }
+    return count;
 }
 
 pub fn focus_top_in(self: *Self, output: *Output, skip_floating: bool) ?*Window {
