@@ -520,13 +520,6 @@ pub fn focus(self: *Self, window: *Window, lift: bool) void {
     self.set_current_output(window.output);
     if (lift) self.window_to_lift = window;
 
-    if (self.focused_window()) |w| {
-        // unmaximize window if focus changed
-        if (w != window and w.maximize) {
-            w.toggle_maximize(false);
-        }
-    }
-
     if (comptime build_options.bar_enabled) {
         if (window.output) |output| {
             output.bar.damage(.tags);

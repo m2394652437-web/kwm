@@ -91,15 +91,6 @@ pub fn render(self: *Self, color: u32) void {
     log.debug("<{*}> rendering", .{ self });
 
     const width, const height = blk: {
-        if (self.window.maximize) {
-            if (self.window.output) |output| {
-                break :blk .{
-                    output.exclusive_width(),
-                    output.exclusive_height(),
-                };
-            }
-            return;
-        }
         break :blk
             if (self.window.managed_by_layout()) .{
                 self.window.width + 2*ctx.cfg.border.width,

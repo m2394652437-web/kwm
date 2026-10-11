@@ -34,9 +34,7 @@ pub fn arrange(self: *const Self, output: *Output) !void {
     const available_width = output.exclusive_width();
     const available_height = output.exclusive_height();
 
-    const master_width: i32 = @intFromFloat(
-        @as(f32, @floatFromInt(available_width)) * focus_top.scroller_mfact
-    );
+    const master_width = self.column_width(available_width, focus_top.scroller_mfact);
     const height = available_height - 2*self.outer_gap;
     const y = self.outer_gap;
 
@@ -79,9 +77,7 @@ pub fn arrange(self: *const Self, output: *Output) !void {
 
             x -= self.inner_gap;
 
-            const width: i32 = @intFromFloat(
-                @as(f32, @floatFromInt(available_width)) * window.scroller_mfact
-            );
+            const width = self.column_width(available_width, window.scroller_mfact);
 
             x -= width;
             window.scroller_x = .{ .x = x };
@@ -100,9 +96,7 @@ pub fn arrange(self: *const Self, output: *Output) !void {
 
             x += self.inner_gap;
 
-            const width: i32 = @intFromFloat(
-                @as(f32, @floatFromInt(available_width)) * window.scroller_mfact
-            );
+            const width = self.column_width(available_width, window.scroller_mfact);
 
             window.scroller_x = .{ .x = x };
             window.unbound_move(x, y);
@@ -136,6 +130,13 @@ pub fn arrange(self: *const Self, output: *Output) !void {
             window.unbound_move(window.x + offset_x, null);
         }
     }
+}
+
+
+// mfact 1 (a maximized window) fills the space between the outer gaps
+fn column_width(self: *const Self, available_width: i32, mfact: f32) i32 {
+    const width: i32 = @intFromFloat(@as(f32, @floatFromInt(available_width)) * mfact);
+    return @min(width, available_width - 2*self.outer_gap);
 }
 
 

@@ -115,6 +115,8 @@ height: i32 = 0,
 min_width: i32 = 1,
 min_height: i32 = 1,
 scroller_mfact: f32 = undefined,
+// scroller_mfact to restore on unmaximize
+unmaximized_mfact: f32 = undefined,
 scroller_x: ?union(enum) {
     x: i32,
     center,
@@ -460,6 +462,15 @@ pub fn toggle_maximize(self: *Self, flag: ?bool) void {
 
     log.debug("<{*}> toggle maximize: {}", .{ self, self.maximize });
 
+    // a maximized window is a full width column, so it slides like any other one
+    if (self.maximize) {
+        self.toggle_floating(false);
+        self.unmaximized_mfact = self.scroller_mfact;
+        self.scroller_mfact = 1;
+    } else {
+        self.scroller_mfact = self.unmaximized_mfact;
+    }
+
     self.append_event(.{ .maximize = self.maximize });
 
     if (self.swallowing_border) |*border| {
@@ -730,12 +741,6 @@ pub fn manage(self: *Self) void {
     const width, const height = blk: {
         var width = self.width;
         var height = self.height;
-        if (self.maximize and !ctx.overview.active) {
-            if (self.output) |output| {
-                width = output.exclusive_width() - 2 * ctx.cfg.border.width;
-                height = output.exclusive_height() - 2 * ctx.cfg.border.width;
-            }
-        }
         if (self.swallowing_border != null) {
             if (self.managed_by_layout()) {
                 width = @max(width - 2 * ctx.cfg.border.width, self.min_width);
@@ -773,15 +778,6 @@ pub fn render(self: *Self) void {
             offset_x += ctx.cfg.border.width;
             offset_y += ctx.cfg.border.width;
         }
-    }
-
-    if (self.maximize and !ctx.overview.active) {
-        log.debug("<{*}> rendering maximize", .{self});
-        offset_x += ctx.cfg.border.width;
-        offset_y += ctx.cfg.border.width;
-        self.rwm_window_node.setPosition(output_x + offset_x, output_y + offset_y);
-        self.rwm_window.show();
-        return;
     }
 
     log.debug("<{*}> rendering to (x: {}, y: {})", .{ self, self.x, self.y });
@@ -996,7 +992,7 @@ fn rwm_window_listener(rwm_window: *river.WindowV1, event: river.WindowV1.Event,
 
             window.mapped = true;
 
-            if (window.geometry_undefined or (!window.managed_by_layout() and window.fullscreen != .output and !window.maximize)) {
+            if (window.geometry_undefined or (!window.managed_by_layout() and window.fullscreen != .output)) {
                 if (window.output == null) {
                     window.unbound_resize(data.width, data.height);
                 } else {
