@@ -223,7 +223,8 @@ fn handle_event(self: *Self, event: *Event) void {
                     // slides in while the old tag becomes the one sliding out
                     const old_tag = output.tag;
                     const side = output.gesture_peek_side;
-                    trigger(.{ .set_output_tag = .{ .tag = .{ .tag = output.gesture_peek_tag } } });
+                    // step instead of jumping to the tag, so dynamic tags can wrap around
+                    trigger(.{ .set_output_tag = .{ .tag = .{ .direction = if (side == 1) .forward else .reverse } } });
                     // the switch is animated here, the next arrange must not animate it again
                     output.gesture_prev_tag = output.gesture_peek_tag;
                     output.gesture_peek_tag = old_tag;

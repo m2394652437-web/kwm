@@ -30,6 +30,9 @@ pub const Tag = union(enum) {
             .output => |o| .{ o, o.tag },
             .window => |w| .{ w.output orelse return 0, w.tag },
         };
+        if (self.* == .direction and Output.dynamic_tags()) {
+            return output.ring_neighbor(base_tag, self.direction);
+        }
         return if (ctx.cfg.bar.tags) |area|
             switch (self.*) {
                 .tag => |tag| tag,

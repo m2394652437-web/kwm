@@ -160,6 +160,12 @@
 
     .single_tagset = false,
 
+    // niri-like dynamic workspaces (ignored with single_tagset):
+    // empty tags are removed and the occupied ones are packed to the front, so there is
+    // always exactly one empty tag after them. Switching to the next/previous tag past
+    // either end moves the tag from the other end over, so the tags form a ring.
+    .dynamic_tags = true,
+
     .sloppy_focus = false,
 
     // .none

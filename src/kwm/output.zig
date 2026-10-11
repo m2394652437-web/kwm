@@ -343,6 +343,7 @@ pub fn manage(self: *Self) void {
         return;
     }
 
+    self.normalize_tags();
     self.animate_tag_change();
     if (self.gesture_peek_tag != 0) self.arrange_peek();
 
@@ -358,6 +359,139 @@ pub fn manage(self: *Self) void {
     if (self.current_layout() != .scroller) self.scroller_prev_focus = null;
 
     log.debug("<{*}> managed", .{self});
+}
+
+pub fn dynamic_tags() bool {
+    return ctx.cfg.dynamic_tags and !ctx.cfg.single_tagset;
+}
+
+fn tag_limit() usize {
+    return if (ctx.cfg.bar.tags) |area| area.tags.len else 32;
+}
+
+// tags holding windows of this output; sticky windows are on every tag and do not count
+fn dynamic_occupied(self: *const Self) u32 {
+    var mask: u32 = 0;
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.output == self and window.swallowed_by == null and !window.sticky) mask |= window.tag;
+    }
+    return mask;
+}
+
+// number of workspaces with dynamic tags: the occupied ones (packed to the front by
+// normalize_tags), the current one even if empty, and one empty tag after them
+pub fn workspace_count(self: *const Self) usize {
+    const occupied = self.dynamic_occupied();
+    const kept = occupied | self.tag;
+    if (kept == 0) return 1;
+    const last: u5 = @intCast(31 - @clz(kept));
+    const trailing_empty: usize = if (occupied & (@as(u32, 1) << last) != 0) 1 else 0;
+    return @min(@as(usize, last) + 1 + trailing_empty, tag_limit());
+}
+
+// next/previous workspace of `base`, wrapping around at both ends
+pub fn ring_neighbor(self: *const Self, base: u32, direction: types.Direction) u32 {
+    if (base == 0) return 0;
+    const n = self.workspace_count();
+    const current = @ctz(base);
+    const next: usize = switch (direction) {
+        .forward => if (current + 1 < n) current + 1 else 0,
+        .reverse => if (current > 0) current - 1 else n - 1,
+    };
+    return @as(u32, 1) << @intCast(next);
+}
+
+// switch to the next/previous workspace; past the end, the workspace from the other end
+// is moved over first, so it comes in from the side the user is moving to
+pub fn step_tag(self: *Self, direction: types.Direction) void {
+    // windows may have been closed since the last arrange
+    self.normalize_tags();
+    const n = self.workspace_count();
+    if (n < 2) return;
+    const current = @ctz(self.main_tag);
+
+    var perm: Permutation = identity;
+    switch (direction) {
+        .forward => if (current + 1 >= n) {
+            // first workspace goes after the last one
+            perm[0] = @intCast(n - 1);
+            for (1..n) |i| perm[i] = @intCast(i - 1);
+        },
+        .reverse => if (current == 0) {
+            // last workspace goes before the first one
+            perm[n - 1] = 0;
+            for (0..n - 1) |i| perm[i] = @intCast(i + 1);
+        },
+    }
+    self.permute_tags(&perm);
+    self.set_tag(self.ring_neighbor(self.main_tag, direction));
+}
+
+// drop empty tags (except the shown ones) and pack the rest to the front, keeping their order
+fn normalize_tags(self: *Self) void {
+    if (!dynamic_tags()) return;
+
+    const kept = self.dynamic_occupied() | self.tag;
+    var perm: Permutation = undefined;
+    var next: u6 = 0;
+    for (0..32) |i| {
+        if (kept & (@as(u32, 1) << @intCast(i)) != 0) {
+            perm[i] = @intCast(next);
+            next += 1;
+        }
+    }
+    for (0..32) |i| {
+        if (kept & (@as(u32, 1) << @intCast(i)) == 0) {
+            perm[i] = @intCast(next);
+            next += 1;
+        }
+    }
+    if (std.mem.eql(u5, &perm, &identity)) return;
+    self.permute_tags(&perm);
+}
+
+// old tag index -> new tag index
+const Permutation = [32]u5;
+
+const identity: Permutation = blk: {
+    var perm: Permutation = undefined;
+    for (0..32) |i| perm[i] = i;
+    break :blk perm;
+};
+
+fn apply_permutation(perm: *const Permutation, mask: u32) u32 {
+    var result: u32 = 0;
+    for (0..32) |i| {
+        if (mask & (@as(u32, 1) << @intCast(i)) != 0) result |= @as(u32, 1) << perm[i];
+    }
+    return result;
+}
+
+// renumber the tags of this output and everything that refers to them
+fn permute_tags(self: *Self, perm: *const Permutation) void {
+    if (std.mem.eql(u5, perm, &identity)) return;
+    log.debug("<{*}> renumber tags", .{self});
+
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.output == self) window.tag = apply_permutation(perm, window.tag);
+    }
+
+    inline for (.{ "tag", "main_tag", "prev_tag", "prev_main_tag", "gesture_peek_tag", "gesture_prev_tag" }) |name| {
+        @field(self, name) = apply_permutation(perm, @field(self, name));
+    }
+
+    const layouts = self.layouts;
+    const layout_tag = self.layout_tag;
+    const prev_layout_tag = self.prev_layout_tag;
+    for (0..32) |i| {
+        self.layouts[perm[i]] = layouts[i];
+        self.layout_tag[perm[i]] = layout_tag[i];
+        self.prev_layout_tag[perm[i]] = prev_layout_tag[i];
+    }
+
+    if (comptime build_options.bar_enabled) self.bar.damage(.tags);
 }
 
 // slide between tags when the tag was switched by other means than a swipe

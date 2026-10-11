@@ -594,7 +594,14 @@ fn handle_actions(self: *Self) void {
             },
             .set_output_tag => |data| {
                 if (ctx.current_output) |output| {
-                    output.set_tag(data.tag.of(.{ .output = output }));
+                    switch (data.tag) {
+                        .direction => |direction| if (Output.dynamic_tags()) {
+                            output.step_tag(direction);
+                        } else {
+                            output.set_tag(data.tag.of(.{ .output = output }));
+                        },
+                        else => output.set_tag(data.tag.of(.{ .output = output })),
+                    }
                 }
             },
             .set_window_tag => |data| {

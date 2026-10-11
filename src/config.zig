@@ -42,6 +42,8 @@ pub const Config = struct {
 
     single_tagset: bool,
 
+    dynamic_tags: bool,
+
     sloppy_focus: bool,
 
     cursor_warp: enum {
