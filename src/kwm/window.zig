@@ -91,6 +91,8 @@ clip_state: enum {
     cliped,
 } = .unknow,
 geometry_undefined: bool = false,
+// set on the first `dimensions` event, i.e. once the window is displayed
+mapped: bool = false,
 
 tag: u32 = 1,
 pid: i32 = 0,
@@ -992,6 +994,8 @@ fn rwm_window_listener(rwm_window: *river.WindowV1, event: river.WindowV1.Event,
         .dimensions => |data| {
             log.debug("<{*}> dimensions: ({}, {})", .{ window, data.width, data.height });
 
+            window.mapped = true;
+
             if (window.geometry_undefined or (!window.managed_by_layout() and window.fullscreen != .output and !window.maximize)) {
                 if (window.output == null) {
                     window.unbound_resize(data.width, data.height);
@@ -1022,7 +1026,9 @@ fn rwm_window_listener(rwm_window: *river.WindowV1, event: river.WindowV1.Event,
             const is_small = data.max_width > 0 and data.max_height > 0 and
                 data.max_width < 600 and data.max_height < 400;
 
-            if ((is_fixed or is_small) and !window.floating) {
+            // only decide this for new windows, clients may change their
+            // hints at any time (e.g. a transient fixed size while resizing)
+            if (!window.mapped and (is_fixed or is_small) and !window.floating) {
                 log.debug("<{*}> auto-floating fixed/small window ({}x{}-{}x{})", .{ window, data.min_width, data.min_height, data.max_width, data.max_height });
 
                 window.toggle_floating(true);
