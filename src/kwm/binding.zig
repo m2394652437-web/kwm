@@ -7,6 +7,7 @@ const layout = @import("layout.zig");
 const Window = @import("window.zig");
 const Output = @import("output.zig");
 const Context = @import("context.zig");
+const Overview = @import("overview.zig");
 pub const XkbBinding = @import("binding/xkb_binding.zig");
 pub const PointerBinding = @import("binding/pointer_binding.zig");
 
@@ -120,7 +121,11 @@ pub const Action = union(enum) {
     switch_layout: struct { layout: layout.Type },
     switch_to_previous_layout,
     toggle_bar,
+    toggle_overview,
 
+    overview_select: struct { direction: Overview.Direction },
+    overview_move: struct { direction: Overview.Direction },
+    overview_confirm,
     modify_nmaster: struct { change: enum { increase, decrease } },
     modify_mfact: struct { change: SetStep },
     cycle_scroller_mfact: struct { candidate_mfacts: []const f32 },

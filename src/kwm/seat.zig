@@ -23,6 +23,7 @@ const Output = @import("output.zig");
 const Window = @import("window.zig");
 const Context = @import("context.zig");
 const ShellSurface = @import("shell_surface.zig");
+const Overview = @import("overview.zig");
 
 const ctx = Context.get();
 
@@ -199,7 +200,7 @@ pub fn manage(self: *Self) void {
 
         const window = self.window_below_pointer.window.?;
 
-        ctx.focus(window, window.managed_by_layout());
+        if (!ctx.overview.active) ctx.focus(window, window.managed_by_layout());
     }
 
     self.handle_actions();
@@ -843,6 +844,18 @@ fn handle_actions(self: *Self) void {
                 ctx.reload_config();
             },
 
+            .toggle_overview => {
+                ctx.overview.toggle();
+            },
+            .overview_select => |data| {
+                if (ctx.overview.active) ctx.overview.select(data.direction);
+            },
+            .overview_move => |data| {
+                if (ctx.overview.active) ctx.overview.move(data.direction);
+            },
+            .overview_confirm => {
+                if (ctx.overview.active) ctx.overview.confirm();
+            },
             .group => |group| {
                 for (group.actions) |nested_action| {
                     self.append_action(nested_action);
@@ -855,7 +868,13 @@ fn handle_actions(self: *Self) void {
 fn window_interaction(self: *Self, window: *Window) void {
     log.debug("<{*}> interaction with window {*}", .{ self, window });
 
-    ctx.focus(window, true);
+    if (ctx.overview.active) {
+        if (window.output) |output| {
+            if (Overview.is_candidate(window, output)) ctx.overview.selected = window;
+        }
+        ctx.overview.confirm();
+    } else ctx.focus(window, true);
+
     self.has_pointer_interaction = true;
 }
 

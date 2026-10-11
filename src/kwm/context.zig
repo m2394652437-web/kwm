@@ -25,11 +25,12 @@ const Seat = @import("seat.zig");
 const Output = @import("output.zig");
 const Window = @import("window.zig");
 const KeyRepeat = @import("key_repeat.zig");
+const Overview = @import("overview.zig");
 const ShellSurface = @import("shell_surface.zig");
 
 const TimerTask = struct {
     time: Io.Timestamp,
-    handler: *const fn(context: *Self) void,
+    handler: *const fn (context: *Self) void,
 
     pub fn compare(context: void, task1: TimerTask, task2: TimerTask) math.Order {
         _ = context;
@@ -40,7 +41,6 @@ const TimerTask = struct {
 var ctx: Self = undefined;
 var inited: bool = false;
 var mode_buffer: [16]u8 = undefined;
-
 
 gpa: mem.Allocator,
 io: Io,
@@ -78,6 +78,8 @@ window_to_lift: ?*Window = null,
 windows: wl.list.Head(Window, .link) = undefined,
 focus_stack: wl.list.Head(Window, .flink) = undefined,
 
+overview: Overview = .{},
+
 key_repeat: ?KeyRepeat,
 
 bar_status_fd: ?posix.fd_t = null,
@@ -95,11 +97,9 @@ quit_hook: ?struct {
     exit_session: bool,
 } = null,
 
-
 pub inline fn check_init() void {
     if (!inited) @panic("context has not been initialized yet");
 }
-
 
 pub fn init(
     gpa: mem.Allocator,
@@ -147,7 +147,7 @@ pub fn init(
         .key_repeat = undefined,
         .terminal_windows = .init(gpa),
         .output_states = .init(gpa),
-        .mode = fmt.bufPrint(&mode_buffer, "{s}", .{ config.default_mode }) catch return error.ModeNameTooLong,
+        .mode = fmt.bufPrint(&mode_buffer, "{s}", .{config.default_mode}) catch return error.ModeNameTooLong,
     };
 
     const wl_surface = try wl_compositor.createSurface();
@@ -189,7 +189,6 @@ pub fn init(
 
     inited = true;
 }
-
 
 pub fn deinit() void {
     std.debug.assert(inited);
@@ -273,23 +272,20 @@ pub fn deinit() void {
     config.free(ctx.gpa, ctx.cfg);
 }
 
-
 pub inline fn get() *Self {
     return &ctx;
 }
 
-
-pub fn run_later(self: *Self, delay: Io.Duration, handler: *const fn(*Self) void) void {
+pub fn run_later(self: *Self, delay: Io.Duration, handler: *const fn (*Self) void) void {
     log.debug("run {*} {}ms later", .{ handler, delay.toMilliseconds() });
 
     const now = Io.Timestamp.now(self.io, .awake);
     const time = now.addDuration(delay);
     self.timer_tasks.push(self.gpa, .{ .time = time, .handler = handler }) catch |err| {
-        log.err("push failed: {}", .{ err });
+        log.err("push failed: {}", .{err});
         return;
     };
 }
-
 
 pub fn run_timer_tasks(self: *Self) void {
     log.debug("run timer tasks", .{});
@@ -297,27 +293,22 @@ pub fn run_timer_tasks(self: *Self) void {
     while (self.timer_tasks.peek()) |*task| {
         const now = std.Io.Timestamp.now(self.io, .awake);
         if (now.toMilliseconds() >= task.time.toMilliseconds()) {
-            log.debug("run {*}", .{ task.handler });
+            log.debug("run {*}", .{task.handler});
             task.handler(self);
         } else break;
         _ = self.timer_tasks.pop();
     }
 }
 
-
 pub fn reload_config(self: *Self) void {
     log.debug("reloading config", .{});
 
-    const mask = config.reload(
-        .{ .gpa = self.gpa, .io = self.io, .env = &self.env },
-        &self.cfg,
-        self.config_path
-    ) catch |err| {
-        log.err("reload configuration failed: {}", .{ err });
+    const mask = config.reload(.{ .gpa = self.gpa, .io = self.io, .env = &self.env }, &self.cfg, self.config_path) catch |err| {
+        log.err("reload configuration failed: {}", .{err});
         return;
     };
 
-    log.debug("mask: {any}", .{ mask });
+    log.debug("mask: {any}", .{mask});
 
     if (mask.env) {
         self.env.deinit();
@@ -383,7 +374,6 @@ pub fn reload_config(self: *Self) void {
     }
 }
 
-
 pub fn start_listening_status(self: *Self) void {
     self.stop_listening_status();
 
@@ -392,13 +382,13 @@ pub fn start_listening_status(self: *Self) void {
             .text => null,
             .stdin => blk: {
                 var flags = posix.fcntl(posix.STDIN_FILENO, posix.F.GETFL, 0) catch |err| {
-                    log.err("get fd flags failed: {}", .{ err });
+                    log.err("get fd flags failed: {}", .{err});
                     break :blk null;
                 };
                 flags |= 1 << @bitOffsetOf(posix.O, "NONBLOCK");
 
                 _ = posix.fcntl(posix.STDIN_FILENO, posix.F.SETFL, flags) catch |err| {
-                    log.err("set stdin fd NONBLOCK failed: {}", .{ err });
+                    log.err("set stdin fd NONBLOCK failed: {}", .{err});
                     break :blk null;
                 };
 
@@ -409,9 +399,9 @@ pub fn start_listening_status(self: *Self) void {
                 break :blk null;
             },
         }
-        else null;
+    else
+        null;
 }
-
 
 pub fn stop_listening_status(self: *Self) void {
     if (self.cfg.bar.status) |area| {
@@ -419,19 +409,17 @@ pub fn stop_listening_status(self: *Self) void {
             .text => {},
             .stdin => self.bar_status_fd = null,
             .fifo => if (self.bar_status_fd) |fd| {
-                log.debug("close fd {}", .{ fd });
+                log.debug("close fd {}", .{fd});
                 posix.close(fd);
                 self.bar_status_fd = null;
-            }
+            },
         }
     }
 }
 
-
 pub inline fn is_listening_status(self: *Self) bool {
     return self.bar_status_fd != null;
 }
-
 
 pub fn update_bar_status(self: *Self) void {
     if (comptime build_options.bar_enabled) {
@@ -441,7 +429,7 @@ pub fn update_bar_status(self: *Self) void {
             const dest_buf = &@import("bar.zig").status_buffer;
             const nbytes = posix.read(fd, dest_buf) catch |err| {
                 switch (err) {
-                    error.WouldBlock => log.debug("no data in fd {}", .{ fd }),
+                    error.WouldBlock => log.debug("no data in fd {}", .{fd}),
                     else => log.err("read data from fd {} failed: {}", .{ fd, err }),
                 }
                 return;
@@ -474,7 +462,6 @@ pub fn update_bar_status(self: *Self) void {
     } else unreachable;
 }
 
-
 pub fn handle_signal(self: *Self, sig: posix.SIG) void {
     switch (sig) {
         .INT, .TERM, .QUIT => self.quit(false),
@@ -482,11 +469,11 @@ pub fn handle_signal(self: *Self, sig: posix.SIG) void {
         .CHLD => {
             while (true) {
                 const res = posix.waitpid(-1, posix.W.NOHANG) catch |err| {
-                    log.warn("wait failed: {}", .{ err });
+                    log.warn("wait failed: {}", .{err});
                     break;
                 };
                 if (res.pid <= 0) break;
-                log.debug("wait pid {}", .{ res.pid });
+                log.debug("wait pid {}", .{res.pid});
 
                 if (self.quit_hook) |hook| if (res.pid == hook.pid) {
                     self.quit_hook = null;
@@ -496,29 +483,24 @@ pub fn handle_signal(self: *Self, sig: posix.SIG) void {
                 };
             }
         },
-        else => {}
+        else => {},
     }
 }
-
 
 pub fn register_quit_hook(self: *Self, argv: []const []const u8, exit_session: bool) void {
     log.debug("register quit hook", .{});
 
     if (self.quit_hook == null) {
         const child = self.spawn_child(argv) catch |err| {
-            log.err("spawn quit hook failed: {}", .{ err });
+            log.err("spawn quit hook failed: {}", .{err});
             return;
         };
-        self.quit_hook = .{
-            .pid = child.id orelse {
-                log.err("null child id", .{});
-                return;
-            },
-            .exit_session = exit_session
-        };
+        self.quit_hook = .{ .pid = child.id orelse {
+            log.err("null child id", .{});
+            return;
+        }, .exit_session = exit_session };
     } else log.warn("repeatly register quit hook", .{});
 }
-
 
 pub fn quit(self: *Self, exit_session: bool) void {
     if (exit_session) {
@@ -531,7 +513,6 @@ pub fn quit(self: *Self, exit_session: bool) void {
         self.running = false;
     }
 }
-
 
 pub fn focus(self: *Self, window: *Window, lift: bool) void {
     log.debug("<{*}> focus window: {*}", .{ self, window });
@@ -556,7 +537,6 @@ pub fn focus(self: *Self, window: *Window, lift: bool) void {
     self.focus_stack.prepend(window);
 }
 
-
 pub fn focused_window(self: *Self) ?*Window {
     if (self.current_output) |output| {
         var it = self.focus_stack.safeIterator(.forward);
@@ -569,9 +549,8 @@ pub fn focused_window(self: *Self) ?*Window {
     return null;
 }
 
-
 pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIterSkip) void {
-    log.debug("focus iter: {s}", .{ @tagName(direction) });
+    log.debug("focus iter: {s}", .{@tagName(direction)});
 
     if (self.focused_window()) |window| {
         const wrap_around = !self.cfg.disable_wrap_around_for_scroller or window.output.?.current_layout() != .scroller;
@@ -606,7 +585,6 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
     }
 }
 
-
 pub fn focus_top_in(self: *Self, output: *Output, skip_floating: bool) ?*Window {
     var it = self.focus_stack.safeIterator(.forward);
     while (it.next()) |window| {
@@ -617,7 +595,6 @@ pub fn focus_top_in(self: *Self, output: *Output, skip_floating: bool) ?*Window 
     }
     return null;
 }
-
 
 pub fn focused_before(self: *Self, window: *Window, skip_floating: bool) ?*Window {
     if (window.output) |output| {
@@ -634,9 +611,8 @@ pub fn focused_before(self: *Self, window: *Window, skip_floating: bool) ?*Windo
     return null;
 }
 
-
 pub fn focus_output_iter(self: *Self, direction: types.Direction) void {
-    log.debug("focus output iter: {s}", .{ @tagName(direction) });
+    log.debug("focus output iter: {s}", .{@tagName(direction)});
 
     if (self.current_output) |output| {
         const new_output = switch (direction) {
@@ -649,14 +625,13 @@ pub fn focus_output_iter(self: *Self, direction: types.Direction) void {
                     .forward => .next,
                     .reverse => .prev,
                 },
-            ).?
+            ).?,
         };
         if (new_output != output) {
             self.set_current_output(new_output);
         }
     }
 }
-
 
 pub fn send_to_output(self: *Self, window: *Window, direction: types.Direction) void {
     log.debug("send {*} to {s} output", .{ window, @tagName(direction) });
@@ -672,7 +647,7 @@ pub fn send_to_output(self: *Self, window: *Window, direction: types.Direction) 
                     .forward => .next,
                     .reverse => .prev,
                 },
-            ).?
+            ).?,
         };
         if (new_output != output) {
             window.set_output(new_output, true);
@@ -680,21 +655,19 @@ pub fn send_to_output(self: *Self, window: *Window, direction: types.Direction) 
                 .output => {
                     window.prepare_fullscreen(new_output);
                 },
-                else => {}
+                else => {},
             }
             window.set_tag(new_output.tag);
         }
     }
 }
 
-
 pub inline fn focus_exclusive(self: *Self) bool {
     return if (self.current_seat) |seat| seat.focus_exclusive else false;
 }
 
-
 pub fn swap(self: *Self, direction: types.Direction) void {
-    log.debug("swap window: {s}", .{ @tagName(direction) });
+    log.debug("swap window: {s}", .{@tagName(direction)});
 
     if (self.focused_window()) |window| {
         if (window.floating) return;
@@ -714,7 +687,7 @@ pub fn swap(self: *Self, direction: types.Direction) void {
                         .forward => .next,
                         .reverse => .prev,
                     },
-                )
+                ),
             } orelse break;
             defer win = new_window;
             if (new_window == window) break;
@@ -726,7 +699,6 @@ pub fn swap(self: *Self, direction: types.Direction) void {
         }
     }
 }
-
 
 pub fn attach_window(self: *Self, window: *Window, mode: types.WindowAttachMode) void {
     log.debug("attach {*}: {s}", .{ window, @tagName(mode) });
@@ -767,13 +739,12 @@ pub fn attach_window(self: *Self, window: *Window, mode: types.WindowAttachMode)
     }
 }
 
-
 pub fn prepare_remove_output(self: *Self, output: *Output) void {
-    log.debug("prepare to remove output {*}", .{ output });
+    log.debug("prepare to remove output {*}", .{output});
 
     // store output state
     if (self.store_output_state(output)) {
-        log.debug("store state of output `{s}`", .{ output.name orelse "unknown" });
+        log.debug("store state of output `{s}`", .{output.name orelse "unknown"});
     } else |err| log.err("store state of output `{s}` failed: {}", .{ output.name orelse "unknown", err });
 
     if (output == self.current_output) {
@@ -792,26 +763,24 @@ pub fn prepare_remove_output(self: *Self, output: *Output) void {
             }
             switch (window.fullscreen) {
                 .output => |o| if (o == output) window.prepare_unfullscreen(),
-                else => {}
+                else => {},
             }
         }
     }
 }
 
-
 pub fn prepare_remove_seat(self: *Self, seat: *Seat) void {
-    log.debug("prepare to remove seat {*}", .{ seat });
+    log.debug("prepare to remove seat {*}", .{seat});
 
     if (seat == self.current_seat) {
         self.promote_new_seat();
     }
 }
 
-
 pub fn switch_mode(self: *Self, mode: []const u8) void {
     log.debug("switch mode from {s} to {s}", .{ self.mode, mode });
 
-    self.mode = fmt.bufPrint(&mode_buffer, "{s}", .{ mode }) catch @panic("mode name too lone");
+    self.mode = fmt.bufPrint(&mode_buffer, "{s}", .{mode}) catch @panic("mode name too lone");
 
     if (comptime build_options.bar_enabled) {
         var it = self.outputs.safeIterator(.forward);
@@ -821,14 +790,12 @@ pub fn switch_mode(self: *Self, mode: []const u8) void {
     }
 }
 
-
 pub fn shift_to_head(self: *Self, window: *Window) void {
-    log.debug("shift window {*} to head", .{ window });
+    log.debug("shift window {*} to head", .{window});
 
     window.link.remove();
     self.windows.prepend(window);
 }
-
 
 pub fn toggle_fullscreen(self: *Self, in_window: bool) void {
     if (self.current_output) |output| {
@@ -838,8 +805,7 @@ pub fn toggle_fullscreen(self: *Self, in_window: bool) void {
         } else if (self.focused_window()) |window| {
             switch (window.fullscreen) {
                 .none => window.prepare_fullscreen(if (in_window) null else window.output.?),
-                .window => if (in_window) window.prepare_unfullscreen()
-                    else window.prepare_fullscreen(window.output.?),
+                .window => if (in_window) window.prepare_unfullscreen() else window.prepare_fullscreen(window.output.?),
                 .output => {
                     window.prepare_unfullscreen();
                     self.focus(window, true);
@@ -848,7 +814,6 @@ pub fn toggle_fullscreen(self: *Self, in_window: bool) void {
         }
     }
 }
-
 
 pub fn register_terminal(self: *Self, window: *Window) void {
     log.debug("register terminal window {*}(pid: {})", .{ window, window.pid });
@@ -859,23 +824,20 @@ pub fn register_terminal(self: *Self, window: *Window) void {
     };
 }
 
-
 pub fn unregister_terminal(self: *Self, window: *Window) void {
     log.debug("unregister terminal window {*}(pid: {})", .{ window, window.pid });
 
     if (!self.terminal_windows.remove(window.pid)) {
-        log.debug("remove pid {} failed, not found", .{ window.pid });
+        log.debug("remove pid {} failed, not found", .{window.pid});
     }
 }
-
 
 pub inline fn find_terminal(self: *Self, pid: i32) ?*Window {
     return self.terminal_windows.get(pid);
 }
 
-
 pub fn set_current_output(self: *Self, output: ?*Output) void {
-    log.debug("set current output: {*}", .{ output });
+    log.debug("set current output: {*}", .{output});
 
     if (comptime build_options.bar_enabled) {
         if (self.current_output) |o| o.bar.damage(.title);
@@ -894,39 +856,25 @@ pub fn set_current_output(self: *Self, output: ?*Output) void {
     }
 }
 
-
 pub inline fn set_current_seat(self: *Self, seat: ?*Seat) void {
-    log.debug("set current seat: {*}", .{ seat });
+    log.debug("set current seat: {*}", .{seat});
 
     self.current_seat = seat;
 }
-
 
 pub fn spawn_child(self: *Self, argv: []const []const u8) !process.Child {
     if (comptime builtin.mode == .Debug) {
         const cmd = try mem.join(self.gpa, " ", argv);
         defer self.gpa.free(cmd);
-        log.debug("spawn child process: {s}", .{ cmd });
+        log.debug("spawn child process: {s}", .{cmd});
     }
 
-    return try process.spawn(
-        self.io,
-        .{
-            .argv = argv,
-            .environ_map = &self.env,
-            .cwd =
-                if (
-                    switch (self.cfg.working_directory) {
-                        .none => null,
-                        .home => self.env.get("HOME"),
-                        .custom => |dir| dir,
-                    }
-                ) |path| .{ .path = path }
-                else .inherit
-        }
-    );
+    return try process.spawn(self.io, .{ .argv = argv, .environ_map = &self.env, .cwd = if (switch (self.cfg.working_directory) {
+        .none => null,
+        .home => self.env.get("HOME"),
+        .custom => |dir| dir,
+    }) |path| .{ .path = path } else .inherit });
 }
-
 
 pub fn spawn(self: *Self, argv: []const []const u8) void {
     if (argv.len == 0) return;
@@ -934,7 +882,7 @@ pub fn spawn(self: *Self, argv: []const []const u8) void {
     if (comptime builtin.mode == .Debug) {
         const cmd = mem.join(self.gpa, " ", argv) catch unreachable;
         defer self.gpa.free(cmd);
-        log.debug("spawn: `{s}`", .{ cmd });
+        log.debug("spawn: `{s}`", .{cmd});
     }
 
     var arena_allocator: heap.ArenaAllocator = .init(self.gpa);
@@ -942,21 +890,21 @@ pub fn spawn(self: *Self, argv: []const []const u8) void {
     const arena = arena_allocator.allocator();
 
     const argv_buffer = arena.allocSentinel(?[*:0]const u8, argv.len, null) catch |err| {
-        log.err("allocSentinel failed: {}", .{ err });
+        log.err("allocSentinel failed: {}", .{err});
         return;
     };
     for (0..argv.len) |i| argv_buffer[i] = arena.dupeZ(u8, argv[i]) catch |err| {
-        log.err("dupeZ failed: {}", .{ err });
+        log.err("dupeZ failed: {}", .{err});
         return;
     };
 
     const env_block = self.env.createPosixBlock(arena, .{}) catch |err| {
-        log.err("createPosixBlock failed: {}", .{ err });
+        log.err("createPosixBlock failed: {}", .{err});
         return;
     };
 
     const pid1 = posix.fork() catch |err| {
-        log.err("fork failed: {}", .{ err });
+        log.err("fork failed: {}", .{err});
         return;
     };
 
@@ -965,13 +913,7 @@ pub fn spawn(self: *Self, argv: []const []const u8) void {
     _ = posix.setsid() catch unreachable;
 
     // reset signal mask
-    if (
-        posix.system.sigprocmask(
-            posix.SIG.SETMASK,
-            &posix.sigemptyset(),
-            null
-        ) < 0
-    ) unreachable;
+    if (posix.system.sigprocmask(posix.SIG.SETMASK, &posix.sigemptyset(), null) < 0) unreachable;
 
     const pid2 = posix.fork() catch posix.exit(1);
     if (pid2 == 0) {
@@ -984,17 +926,15 @@ pub fn spawn(self: *Self, argv: []const []const u8) void {
         }
 
         const err = posix.execve(argv_buffer[0].?, argv_buffer, env_block.slice.ptr);
-        log.err("execve failed: {}", .{ err });
+        log.err("execve failed: {}", .{err});
     }
 
     posix.exit(0);
 }
 
-
 pub inline fn spawn_shell(self: *Self, cmd: []const u8) void {
-    self.spawn(&[_][]const u8 { "sh", "-c", cmd });
+    self.spawn(&[_][]const u8{ "sh", "-c", cmd });
 }
-
 
 inline fn store_output_state(self: *Self, output: *const Output) !void {
     if (output.name) |name| {
@@ -1008,10 +948,9 @@ inline fn store_output_state(self: *Self, output: *const Output) !void {
     }
 }
 
-
 fn init_env_map(self: *Self) void {
     self.env = self.init_env.createMap(self.gpa) catch |err| blk: {
-        log.warn("create environ map failed: {}", .{ err });
+        log.warn("create environ map failed: {}", .{err});
         break :blk .init(self.gpa);
     };
 
@@ -1028,8 +967,8 @@ fn init_env_map(self: *Self) void {
         };
 
         var buffer: [8]u8 = undefined;
-        const xcursor_size = fmt.bufPrint(&buffer, "{}", .{ xcursor_theme.size }) catch |err| {
-            log.warn("bufPrint failed: {}", .{ err });
+        const xcursor_size = fmt.bufPrint(&buffer, "{}", .{xcursor_theme.size}) catch |err| {
+            log.warn("bufPrint failed: {}", .{err});
             break :blk;
         };
         ctx.env.put("XCURSOR_SIZE", xcursor_size) catch |err| {
@@ -1038,49 +977,42 @@ fn init_env_map(self: *Self) void {
     }
 }
 
-
 fn load_config(self: *Self) void {
     log.debug("loading configuration", .{});
 
     var env: process.Environ.Map = self.init_env.createMap(self.gpa) catch |err| blk: {
-        log.warn("create environ map failed: {}", .{ err });
+        log.warn("create environ map failed: {}", .{err});
         break :blk .init(self.gpa);
     };
     defer env.deinit();
 
-    self.cfg = config.load(
-        .{ .gpa = self.gpa, .io = self.io, .env = &env },
-        self.config_path
-    ) catch |err| blk: {
-        log.err("load configuration failed: {}, fallback to default configuration", .{ err });
+    self.cfg = config.load(.{ .gpa = self.gpa, .io = self.io, .env = &env }, self.config_path) catch |err| blk: {
+        log.err("load configuration failed: {}, fallback to default configuration", .{err});
         break :blk config.default;
     };
 }
 
-
 fn run_startup_cmds(self: *Self) void {
     self.startup_processes.ensureTotalCapacity(self.gpa, self.cfg.startup_cmds.len) catch |err| {
-        log.err("initCapacity for startup_processes failed: {}", .{ err });
+        log.err("initCapacity for startup_processes failed: {}", .{err});
         return;
     };
     for (self.cfg.startup_cmds) |argv| {
         const child = self.spawn_child(argv) catch |err| {
-            log.err("spawn child failed: {}", .{ err });
+            log.err("spawn child failed: {}", .{err});
             continue;
         };
         ctx.startup_processes.appendBounded(child) catch unreachable;
     }
 }
 
-
 fn kill_startup_process(self: *Self) void {
     for (self.startup_processes.items) |*child| {
-        log.debug("kill startup process {}", .{ child.id orelse -1 });
+        log.debug("kill startup process {}", .{child.id orelse -1});
         child.kill(self.io);
     }
     self.startup_processes.clearRetainingCapacity();
 }
-
 
 fn promote_new_output(self: *Self) void {
     log.debug("promote new output", .{});
@@ -1094,12 +1026,8 @@ fn promote_new_output(self: *Self) void {
         .prev,
     );
 
-    self.set_current_output(
-        if (current_output == former_output) null
-        else current_output
-    );
+    self.set_current_output(if (current_output == former_output) null else current_output);
 }
-
 
 fn promote_new_seat(self: *Self) void {
     log.debug("promote new seat", .{});
@@ -1113,12 +1041,8 @@ fn promote_new_seat(self: *Self) void {
         .prev,
     );
 
-    self.set_current_seat(
-        if (current_seat == former_seat) null
-        else current_seat
-    );
+    self.set_current_seat(if (current_seat == former_seat) null else current_seat);
 }
-
 
 fn prepare_manage(self: *Self) void {
     log.debug("prepare to manage", .{});
@@ -1138,8 +1062,7 @@ fn prepare_manage(self: *Self) void {
     }
 
     if (self.cfg.single_tagset) single_tagset_blk: {
-        const current_output = self.current_output
-            orelse break :single_tagset_blk;
+        const current_output = self.current_output orelse break :single_tagset_blk;
 
         {
             var it = self.outputs.safeIterator(.forward);
@@ -1168,28 +1091,24 @@ fn prepare_manage(self: *Self) void {
     }
 }
 
-
 fn prepare_render_windows(self: *Self) void {
-    const focused = self.focused_window();
+    const focused = if (self.overview.active) self.overview.selected else self.focused_window();
 
     var it = self.windows.safeIterator(.forward);
     while (it.next()) |window| {
         if (!window.is_visible()) {
             window.hide();
         } else {
-            window.set_border(
-                if (window.fullscreen == .output) 0
-                else self.cfg.border.width,
-                if (!self.focus_exclusive() and window == focused)
-                    self.cfg.border.color.focus
-                else self.cfg.border.color.unfocus
-            );
+            window.set_border(if (window.fullscreen == .output) 0 else self.cfg.border.width, if (!self.focus_exclusive() and window == focused)
+                self.cfg.border.color.focus
+            else
+                self.cfg.border.color.unfocus);
         }
     }
 
     if (focused) |window| {
         // move focus to head of focus_stack
-        if (!window.sticky) self.focus(window, false);
+        if (!window.sticky and !self.overview.active) self.focus(window, false);
     }
 }
 
@@ -1224,12 +1143,11 @@ fn render_windows(self: *Self) void {
     }
 }
 
-
 fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event, context: *Self) void {
     std.debug.assert(rwm == context.rwm);
 
     const cache = struct {
-        pub var mode: [16] u8 = undefined;
+        pub var mode: [16]u8 = undefined;
     };
 
     switch (event) {
@@ -1297,28 +1215,27 @@ fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event,
             rwm.renderFinish();
         },
         .window => |data| {
-            log.debug("new window {*}", .{ data.id });
+            log.debug("new window {*}", .{data.id});
 
             const window = Window.create(data.id, context.current_output) catch |err| {
-                log.err("create window failed: {}", .{ err });
+                log.err("create window failed: {}", .{err});
                 return;
             };
 
             context.attach_window(
                 window,
                 context.cfg.default_attach_mode.getter.get(
-                    if (context.current_output) |output| output.current_layout()
-                    else context.cfg.default_layout,
+                    if (context.current_output) |output| output.current_layout() else context.cfg.default_layout,
                 ),
             );
             context.focus(window, true);
         },
         .output => |data| {
-            log.debug("new output {*}", .{ data.id });
+            log.debug("new output {*}", .{data.id});
 
             const rwm_layer_shell_output = context.rwm_layer_shell.getOutput(data.id) catch null;
             const output = Output.create(data.id, rwm_layer_shell_output) catch |err| {
-                log.err("create output failed: {}", .{ err });
+                log.err("create output failed: {}", .{err});
                 return;
             };
             context.outputs.append(output);
@@ -1337,10 +1254,10 @@ fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event,
             }
         },
         .seat => |data| {
-            log.debug("new seat {*}", .{ data.id });
+            log.debug("new seat {*}", .{data.id});
 
             const seat = Seat.create(data.id) catch |err| {
-                log.err("create seat failed: {}", .{ err });
+                log.err("create seat failed: {}", .{err});
                 return;
             };
             context.seats.append(seat);
@@ -1352,17 +1269,16 @@ fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event,
         .session_locked => {
             log.debug("session locked", .{});
 
-            _ = fmt.bufPrintZ(&cache.mode, "{s}", .{ context.mode }) catch unreachable;
+            _ = fmt.bufPrintZ(&cache.mode, "{s}", .{context.mode}) catch unreachable;
             context.switch_mode(config.lock_mode);
         },
         .session_unlocked => {
             log.debug("session unlocked", .{});
 
             context.switch_mode(mem.span(@as([*:0]const u8, @ptrCast(&cache.mode))));
-        }
+        },
     }
 }
-
 
 fn trigger_hotplug(self: *Self) void {
     log.debug("trigger hotplug", .{});
@@ -1373,23 +1289,21 @@ fn trigger_hotplug(self: *Self) void {
     }
 }
 
-
 fn hotplug_inputs(self: *Self) void {
     if (self.any_inputs_plugged) {
         self.any_inputs_plugged = false;
 
         log.debug("hotplug inputs", .{});
-        self.spawn(&.{ "kwim" });
+        self.spawn(&.{"kwim"});
     }
 }
-
 
 fn rwm_input_manager_listener(rwm_input_manager: *river.InputManagerV1, event: river.InputManagerV1.Event, context: *Self) void {
     std.debug.assert(rwm_input_manager == context.rwm_inputs.input_manager);
 
     switch (event) {
         .input_device => |data| {
-            log.debug("new input_device {*}", .{ data.id });
+            log.debug("new input_device {*}", .{data.id});
 
             context.trigger_hotplug();
 
@@ -1401,79 +1315,67 @@ fn rwm_input_manager_listener(rwm_input_manager: *river.InputManagerV1, event: r
             data.id.setListener(*Self, rwm_input_device_listener, context);
         },
         .finished => {
-            log.debug("{*} finished", .{ rwm_input_manager });
+            log.debug("{*} finished", .{rwm_input_manager});
 
             rwm_input_manager.destroy();
-        }
+        },
     }
 }
-
 
 fn rwm_libinput_config_listener(rwm_libinput_config: *river.LibinputConfigV1, event: river.LibinputConfigV1.Event, context: *Self) void {
     std.debug.assert(rwm_libinput_config == context.rwm_inputs.libinput_config);
 
     switch (event) {
         .libinput_device => |data| {
-            log.debug("new libinput_device {*}", .{ data.id });
+            log.debug("new libinput_device {*}", .{data.id});
 
             context.trigger_hotplug();
             data.id.destroy();
         },
         .finished => {
-            log.debug("{*} finished", .{ rwm_libinput_config });
+            log.debug("{*} finished", .{rwm_libinput_config});
 
             rwm_libinput_config.destroy();
-        }
+        },
     }
 }
-
 
 fn rwm_xkb_config_listener(rwm_xkb_config: *river.XkbConfigV1, event: river.XkbConfigV1.Event, context: *Self) void {
     std.debug.assert(rwm_xkb_config == context.rwm_inputs.xkb_config);
 
     switch (event) {
         .xkb_keyboard => |data| {
-            log.debug("new xkb_keyboard {*}", .{ data.id });
+            log.debug("new xkb_keyboard {*}", .{data.id});
 
             context.trigger_hotplug();
             data.id.destroy();
-
         },
         .finished => {
-            log.debug("{*} finished", .{ rwm_xkb_config });
+            log.debug("{*} finished", .{rwm_xkb_config});
 
             rwm_xkb_config.destroy();
-        }
+        },
     }
 }
-
 
 fn rwm_input_device_listener(rwm_input_device: *river.InputDeviceV1, event: river.InputDeviceV1.Event, _: *Self) void {
     switch (event) {
         .removed => {
-            log.debug("<{*}> removed", .{ rwm_input_device });
+            log.debug("<{*}> removed", .{rwm_input_device});
 
             rwm_input_device.destroy();
         },
-        else => {}
+        else => {},
     }
 }
 
-
 fn try_open_fifo(path: []const u8) !posix.fd_t {
-    var expanded_path = try utils.expand_env_str(
-        .{ .gpa = ctx.gpa, .env = &ctx.env },
-        path
-    );
+    var expanded_path = try utils.expand_env_str(.{ .gpa = ctx.gpa, .env = &ctx.env }, path);
     defer expanded_path.deinit(ctx.gpa);
 
-    log.debug("try to open fifo file `{s}`", .{ expanded_path.items });
+    log.debug("try to open fifo file `{s}`", .{expanded_path.items});
 
-    const fd = try posix.open(
-        expanded_path.items,
-        .{ .ACCMODE = .RDWR, .NONBLOCK = true, .CLOEXEC = true },
-        0
-    );
+    const fd = try posix.open(expanded_path.items, .{ .ACCMODE = .RDWR, .NONBLOCK = true, .CLOEXEC = true }, 0);
     errdefer posix.close(fd);
 
     const file: Io.File = .{ .handle = fd, .flags = .{ .nonblocking = true } };
