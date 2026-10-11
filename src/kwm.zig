@@ -13,12 +13,14 @@ const types = @import("kwm/types.zig");
 const binding = @import("kwm/binding.zig");
 const Window = @import("kwm/window.zig");
 const Context = @import("kwm/context.zig");
+const Gesture = @import("kwm/gesture.zig");
 
 const FDType = enum {
     wayland,
     signal,
     bar_status,
     key_repeat,
+    gesture,
 };
 
 pub const Layout = @import("kwm/layout.zig");
@@ -51,6 +53,13 @@ pub fn run(wl_display: *wl.Display) !void {
     const signal_fd = try posix.signalfd(-1, &mask, (1 << @bitOffsetOf(posix.O, "NONBLOCK")) | (1 << @bitOffsetOf(posix.O, "CLOEXEC")));
     defer posix.close(signal_fd);
 
+    var gesture: ?Gesture = null;
+    {
+        var g: Gesture = undefined;
+        if (g.init()) |_| gesture = g else |err| log.warn("gesture disabled: {}", .{ err });
+    }
+    defer if (gesture) |*g| g.deinit();
+
     const fd_type_num = @typeInfo(FDType).@"enum".fields.len;
     var fd_buffer: [fd_type_num]posix.pollfd = undefined;
     var fd_type_buffer: [fd_type_num]FDType = undefined;
@@ -82,12 +91,17 @@ pub fn run(wl_display: *wl.Display) !void {
             }
         }
 
+        if (gesture) |g| {
+            try poll_fds.appendBounded(.{ .fd = g.fd, .events = posix.POLL.IN, .revents = 0 });
+            try fd_types.appendBounded(.gesture);
+        }
+
         ctx.run_timer_tasks();
         _ = wl_display.flush();
 
-        const timeout =
+        const timeout: i64 =
             if (ctx.timer_tasks.peek()) |*task|
-                task.time.toMilliseconds() - Io.Timestamp.now(ctx.io, .awake).toMilliseconds()
+                @max(0, task.time.toMilliseconds() - Io.Timestamp.now(ctx.io, .awake).toMilliseconds())
             else -1;
         log.debug("poll timeout: {}", .{ timeout });
         _ = try posix.poll(poll_fds.items, @intCast(timeout));
@@ -105,6 +119,7 @@ pub fn run(wl_display: *wl.Display) !void {
                         const count = try read(u64, poll_fd.fd) orelse continue;
                         ctx.key_repeat.?.repeat(count);
                     },
+                    .gesture => gesture.?.dispatch(),
                 }
             }
         }

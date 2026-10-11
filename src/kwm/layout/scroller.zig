@@ -4,6 +4,7 @@ const std = @import("std");
 const log = std.log.scoped(.scroller);
 
 const Context = @import("../context.zig");
+const Gesture = @import("../gesture.zig");
 const Output = @import("../output.zig");
 const Window = @import("../window.zig");
 
@@ -99,4 +100,40 @@ pub fn arrange(self: *const Self, output: *Output) !void {
             x += width;
         }
     }
+
+    // windows are now at their resting positions, shift them by the gesture offset
+    if (output.gesture_rebase) |rebase| {
+        output.gesture_rebase = null;
+        if (rebase.window == focus_top) {
+            const delta = rebase.rest_x - master_x;
+            output.gesture_base += delta;
+            output.gesture_offset_x += delta;
+        }
+    }
+
+    if (output.gesture_anchor) |anchor| {
+        output.gesture_anchor = null;
+        if (find_tiled(output, anchor.window)) |window| {
+            Gesture.start_settle(output, anchor.x - window.x);
+        }
+    }
+
+    const offset_x = output.gesture_offset_x;
+    if (offset_x != 0) {
+        var it = ctx.windows.iterator(.forward);
+        while (it.next()) |window| {
+            if (!window.is_visible_in(output) or window.floating) continue;
+            window.unbound_move(window.x + offset_x, null);
+        }
+    }
+}
+
+
+// compare by address only, `target` may already be destroyed
+fn find_tiled(output: *Output, target: *Window) ?*Window {
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window == target and window.is_visible_in(output) and !window.floating) return window;
+    }
+    return null;
 }

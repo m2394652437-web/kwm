@@ -251,6 +251,8 @@ pub fn build(b: *std.Build) void {
     exe.pie = pie;
     exe.root_module.linkSystemLibrary("wayland-client", .{});
     exe.root_module.linkSystemLibrary("xkbcommon", .{});
+    exe.root_module.linkSystemLibrary("libinput", .{});
+    exe.root_module.linkSystemLibrary("libudev", .{});
     if (bar_enabled) {
         exe.root_module.linkSystemLibrary("pixman-1", .{});
         exe.root_module.linkSystemLibrary("fcft", .{});

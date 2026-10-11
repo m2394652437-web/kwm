@@ -19,7 +19,7 @@ const MoveResizeStep = union(enum) {
     horizontal: i32,
     vertical: i32,
 };
-const Tag = union(enum) {
+pub const Tag = union(enum) {
     tag: u32,
     direction: types.Direction,
     occupied: types.Direction,

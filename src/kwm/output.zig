@@ -43,6 +43,27 @@ tag: u32 = 1,
 main_tag: u32 = 1,
 prev_tag: u32 = 1,
 prev_main_tag: u32 = 1,
+// horizontal offset applied by scroller layout while a touchpad swipe is in progress
+gesture_offset_x: i32 = 0,
+// offset when the current swipe started, the finger movement is added on top of it
+gesture_base: i32 = 0,
+// window to keep at its on-screen x on the next arrange, so the release does not jump
+gesture_anchor: ?struct { window: *Window, x: i32 } = null,
+// resting x of the focused window before the window list was reordered during a swipe,
+// the next arrange shifts the offset by the change so the view does not move
+gesture_rebase: ?struct { window: *Window, rest_x: i32 } = null,
+// settle animation of gesture_offset_x back to 0
+gesture_anim_from: f64 = 0,
+gesture_anim_start_ms: ?i64 = null,
+// vertical offset of the tiled windows during a vertical swipe
+gesture_offset_y: i32 = 0,
+// adjacent tag shown next to the current one during a vertical swipe, 0 if none
+gesture_peek_tag: u32 = 0,
+// 1: the peek tag is below the current one, -1: above
+gesture_peek_side: i32 = 1,
+// settle animation of gesture_offset_y back to 0
+gesture_anim_y_from: f64 = 0,
+gesture_anim_y_start_ms: ?i64 = null,
 layout_tag: [32]Layout.Type,
 prev_layout_tag: [32]Layout.Type,
 
@@ -316,6 +337,8 @@ pub fn manage(self: *Self) void {
         return;
     }
 
+    if (self.gesture_peek_tag != 0) self.arrange_peek();
+
     switch (self.current_layout()) {
         .float => {},
         inline else => |layout| layout.arrange(self) catch |err| {
@@ -324,7 +347,40 @@ pub fn manage(self: *Self) void {
         },
     }
 
+    self.shift_tiled(self.gesture_offset_y);
+
     log.debug("<{*}> managed", .{self});
+}
+
+// arrange the tag revealed by a vertical swipe with its own layout, one screen away
+fn arrange_peek(self: *Self) void {
+    const tag = self.tag;
+    const main_tag = self.main_tag;
+    defer {
+        self.tag = tag;
+        self.main_tag = main_tag;
+    }
+    self.tag = self.gesture_peek_tag;
+    self.main_tag = self.tag ^ (self.tag & (self.tag - 1));
+
+    switch (self.current_layout()) {
+        .float => return,
+        inline else => |layout| layout.arrange(self) catch |err| {
+            log.err("<{*}> arrange peek tag with {*} failed: {}", .{ self, &layout, err });
+            return;
+        },
+    }
+    self.shift_tiled(self.gesture_offset_y + self.gesture_peek_side * self.exclusive_height());
+}
+
+// move the tiled windows of the current tag vertically, they are re-arranged every manage
+fn shift_tiled(self: *Self, dy: i32) void {
+    if (dy == 0 or self.current_layout() == .float) return;
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (!window.is_visible_in(self) or window.floating) continue;
+        window.unbound_move(null, window.y + dy);
+    }
 }
 
 fn apply_rule(self: *Self, rule: *const config.OutputRule) void {

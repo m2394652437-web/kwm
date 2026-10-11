@@ -489,6 +489,8 @@ pub fn is_visible(self: *Self) bool {
     }
 
     if (self.output) |output| {
+        // tiled windows of the tag revealed by a vertical swipe
+        if ((self.tag & output.gesture_peek_tag) != 0 and !self.floating and self.swallowed_by == null) return true;
         return (self.sticky or
             (self.tag & output.tag) != 0) and self.swallowed_by == null;
     }
