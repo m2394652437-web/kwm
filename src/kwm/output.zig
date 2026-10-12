@@ -48,9 +48,6 @@ gesture_offset_x: i32 = 0,
 gesture_base: i32 = 0,
 // window to keep at its on-screen x on the next arrange, so the release does not jump
 gesture_anchor: ?struct { window: *Window, x: i32 } = null,
-// resting x of the focused window before the window list was reordered during a swipe,
-// the next arrange shifts the offset by the change so the view does not move
-gesture_rebase: ?struct { window: *Window, rest_x: i32 } = null,
 // settle animation of gesture_offset_x back to 0
 gesture_anim_from: f64 = 0,
 gesture_anim_start_ms: ?i64 = null,

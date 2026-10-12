@@ -147,9 +147,6 @@
     // .on_output_changed: warp cursor to the center of output focused
     .cursor_warp = .none,
 
-    // disable wrap around when iter focus or swap window
-    .disable_wrap_around_for_scroller = false,
-
     // touchpad swipe gestures, read from libinput directly (requires the `input` group)
     //  horizontal swipe: scroll the windows
     //  vertical swipe:   switch to the next/previous tag

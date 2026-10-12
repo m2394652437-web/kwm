@@ -546,20 +546,12 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
     log.debug("focus iter: {s}", .{@tagName(direction)});
 
     if (self.focused_window()) |window| {
-        // like the gesture, two windows or less would only flip back and forth
-        const wrap_around = !self.cfg.disable_wrap_around_for_scroller and self.tiled_count(window.output.?) > 2;
-
         var win = window;
-        var wrapped = false;
         while (true) {
-            if (switch (direction) {
-                .forward => win.link.next,
-                .reverse => win.link.prev,
-            } == &self.windows.link) wrapped = true;
             const new_window = switch (direction) {
                 inline else => |d| utils.cycle_list(
                     Window,
-                    wrap_around,
+                    false,
                     &self.windows.link,
                     &win.link,
                     switch (comptime d) {
@@ -577,38 +569,11 @@ pub fn focus_iter(self: *Self, direction: types.Direction, skip: types.WindowIte
                     .nonfloating => if (!new_window.floating) continue,
                 }
 
-                // on the scroller, bring the wrapped window next to the focused one,
-                // so the strip keeps sliding the same way instead of rewinding
-                if (wrapped and !window.floating and !new_window.floating) {
-                    new_window.link.remove();
-                    switch (direction) {
-                        .forward => {
-                            window.link.insert(&new_window.link);
-                            // let the layout place it at the right edge
-                            new_window.scroller_x = null;
-                        },
-                        .reverse => {
-                            window.link.prev.?.insert(&new_window.link);
-                            // anything left of the right edge makes it rest at the left edge
-                            new_window.scroller_x = .{ .x = 0 };
-                        },
-                    }
-                }
-
                 self.focus(new_window, true);
                 break;
             }
         }
     }
-}
-
-fn tiled_count(self: *Self, output: *Output) usize {
-    var count: usize = 0;
-    var it = self.windows.iterator(.forward);
-    while (it.next()) |window| {
-        if (window.is_visible_in(output) and !window.floating) count += 1;
-    }
-    return count;
 }
 
 pub fn focus_top_in(self: *Self, output: *Output, skip_floating: bool) ?*Window {
@@ -699,14 +664,12 @@ pub fn swap(self: *Self, direction: types.Direction) void {
         if (window.floating) return;
         if (window.fullscreen == .output) return;
 
-        const wrap_around = !self.cfg.disable_wrap_around_for_scroller;
-
         var win = window;
         while (true) {
             const new_window = switch (direction) {
                 inline else => |d| utils.cycle_list(
                     Window,
-                    wrap_around,
+                    false,
                     &self.windows.link,
                     &win.link,
                     switch (comptime d) {
@@ -718,12 +681,33 @@ pub fn swap(self: *Self, direction: types.Direction) void {
             defer win = new_window;
             if (new_window == window) break;
             if (new_window.is_visible_in(window.output.?) and !new_window.floating) {
+                // every column may move, not only the swapped ones
+                self.prepare_slide(window.output.?);
                 window.link.swapWith(&new_window.link);
+                // the scroller places the focused window after its left neighbor's remembered x,
+                // a stale one would keep that neighbor in place and make the focused window jump over it
+                std.mem.swap(@TypeOf(window.scroller_x), &window.scroller_x, &new_window.scroller_x);
                 self.focus(window, true);
                 break;
             }
         }
     }
+}
+
+// remember where the tiled windows of `output` are shown, so the next arrange slides
+// them to their new positions instead of jumping
+pub fn prepare_slide(self: *Self, output: *Output) void {
+    if (!self.cfg.gesture.animate_bindings or self.overview.active) return;
+    var it = self.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.is_visible_in(output) and !window.floating) window.move_from_x = window.x;
+    }
+}
+
+// remember the shown width of `window`, so the next arrange animates its width change
+pub fn prepare_resize(self: *Self, window: *Window) void {
+    if (!self.cfg.gesture.animate_bindings or self.overview.active) return;
+    window.width_from = window.width;
 }
 
 pub fn attach_window(self: *Self, window: *Window, mode: types.WindowAttachMode) void {

@@ -121,6 +121,29 @@ scroller_x: ?union(enum) {
     x: i32,
     center,
 } = null,
+// on-screen x before the window list was reordered, the next scroller arrange slides from it
+move_from_x: ?i32 = null,
+// horizontal offset of this window alone, settles back to 0 after a reorder
+move_offset_x: i32 = 0,
+move_anim_from: f64 = 0,
+move_anim_start_ms: ?i64 = null,
+// shown width before scroller_mfact changed, the next scroller arrange animates from it
+width_from: ?i32 = null,
+// added to the column width, settles back to 0 after a width change
+width_offset: i32 = 0,
+width_anim_from: f64 = 0,
+width_anim_start_ms: ?i64 = null,
+// width proposed to the client while the width animates, the larger of the two ends,
+// so the client resizes once and the animation only changes the content clip box
+width_hold: i32 = 0,
+// clip the content to the shown width until the client has caught up after an animation
+width_settling: bool = false,
+content_clipped: bool = false,
+// width the client actually took
+client_width: i32 = 0,
+// last proposed dimensions; proposing again makes river reconfigure the client and wait
+// for it, which stalls every animation frame on slow clients like browsers
+proposed: ?struct { width: i32, height: i32 } = null,
 overview_saved: ?struct {
     x: i32,
     y: i32,
@@ -459,6 +482,12 @@ pub fn toggle_maximize(self: *Self, flag: ?bool) void {
 
     log.debug("<{*}> toggle maximize: {}", .{ self, self.maximize });
 
+    // a tiled window changes its column width: animate it, and slide the columns it pushes
+    if (!self.floating) if (self.output) |output| {
+        ctx.prepare_slide(output);
+        ctx.prepare_resize(self);
+    };
+
     // a maximized window is a full width column, so it slides like any other one
     if (self.maximize) {
         self.toggle_floating(false);
@@ -575,6 +604,7 @@ pub fn handle_events(self: *Self) void {
             },
             .fullscreen => |data| {
                 log.debug("<{*}> managing fullscreen: {*}", .{ self, data });
+                self.proposed = null;
 
                 var fullscreen_output: ?*Output = null;
 
@@ -615,6 +645,7 @@ pub fn handle_events(self: *Self) void {
             },
             .unfullscreen => {
                 log.debug("<{*}> managing unfullscreen", .{self});
+                self.proposed = null;
 
                 switch (self.fullscreen) {
                     .none => {
@@ -729,11 +760,12 @@ pub fn manage(self: *Self) void {
 
     if (self.geometry_undefined) {
         self.rwm_window.proposeDimensions(0, 0);
+        self.proposed = null;
         return;
     }
 
     const width, const height = blk: {
-        var width = self.width;
+        var width = if (self.width_anim_start_ms != null) self.width_hold else self.width;
         var height = self.height;
         if (self.swallowing_border != null) {
             if (self.managed_by_layout()) {
@@ -744,7 +776,9 @@ pub fn manage(self: *Self) void {
         break :blk .{ width, height };
     };
 
+    if (self.proposed) |p| if (p.width == width and p.height == height) return;
     self.rwm_window.proposeDimensions(width, height);
+    self.proposed = .{ .width = width, .height = height };
 }
 
 pub fn render(self: *Self) void {
@@ -792,6 +826,16 @@ pub fn render(self: *Self) void {
     } else if (self.clip_state != .normal) {
         self.rwm_window.setClipBox(0, 0, 0, 0);
         self.clip_state = .normal;
+    }
+
+    // the client is wider than shown while a width change animates
+    const content_width = self.width - (if (self.swallowing_border != null and self.managed_by_layout()) 2 * ctx.cfg.border.width else 0);
+    if (self.width_settling and self.client_width > content_width and content_width > 0) {
+        self.rwm_window.setContentClipBox(0, 0, content_width, self.height);
+        self.content_clipped = true;
+    } else if (self.content_clipped) {
+        self.rwm_window.setContentClipBox(0, 0, 0, 0);
+        self.content_clipped = false;
     }
 
     self.rwm_window.show();
@@ -985,6 +1029,9 @@ fn rwm_window_listener(rwm_window: *river.WindowV1, event: river.WindowV1.Event,
             log.debug("<{*}> dimensions: ({}, {})", .{ window, data.width, data.height });
 
             window.mapped = true;
+            window.client_width = data.width;
+            // the client answered the final width proposed after the animation
+            if (window.width_anim_start_ms == null) window.width_settling = false;
 
             if (window.geometry_undefined or (!window.managed_by_layout() and window.fullscreen != .output)) {
                 if (window.output == null) {

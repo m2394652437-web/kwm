@@ -34,7 +34,7 @@ pub fn arrange(self: *const Self, output: *Output) !void {
     const available_width = output.exclusive_width();
     const available_height = output.exclusive_height();
 
-    const master_width = self.column_width(available_width, focus_top.scroller_mfact);
+    const master_width = self.animated_width(focus_top, available_width);
     const height = available_height - 2*self.outer_gap;
     const y = self.outer_gap;
 
@@ -77,7 +77,7 @@ pub fn arrange(self: *const Self, output: *Output) !void {
 
             x -= self.inner_gap;
 
-            const width = self.column_width(available_width, window.scroller_mfact);
+            const width = self.animated_width(window, available_width);
 
             x -= width;
             window.scroller_x = .{ .x = x };
@@ -96,22 +96,12 @@ pub fn arrange(self: *const Self, output: *Output) !void {
 
             x += self.inner_gap;
 
-            const width = self.column_width(available_width, window.scroller_mfact);
+            const width = self.animated_width(window, available_width);
 
             window.scroller_x = .{ .x = x };
             window.unbound_move(x, y);
             window.unbound_resize(width, height);
             x += width;
-        }
-    }
-
-    // windows are now at their resting positions, shift them by the gesture offset
-    if (output.gesture_rebase) |rebase| {
-        output.gesture_rebase = null;
-        if (rebase.window == focus_top) {
-            const delta = rebase.rest_x - master_x;
-            output.gesture_base += delta;
-            output.gesture_offset_x += delta;
         }
     }
 
@@ -123,13 +113,29 @@ pub fn arrange(self: *const Self, output: *Output) !void {
     }
 
     const offset_x = output.gesture_offset_x;
-    if (offset_x != 0) {
-        var it = ctx.windows.iterator(.forward);
-        while (it.next()) |window| {
-            if (!window.is_visible_in(output) or window.floating) continue;
-            window.unbound_move(window.x + offset_x, null);
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (!window.is_visible_in(output) or window.floating) continue;
+        // the window list was reordered: slide each window from where it was shown
+        if (window.move_from_x) |from| {
+            window.move_from_x = null;
+            Gesture.start_settle_window(window, from - (window.x + offset_x));
         }
+        window.unbound_move(window.x + offset_x + window.move_offset_x, null);
     }
+}
+
+
+// column width while a width change animates, starting it if one is pending
+fn animated_width(self: *const Self, window: *Window, available_width: i32) i32 {
+    const width = self.column_width(available_width, window.scroller_mfact);
+    if (window.width_from) |from| {
+        window.width_from = null;
+        window.width_hold = @max(from, width);
+        window.width_settling = true;
+        Gesture.start_settle_width(window, from - width);
+    }
+    return @max(1, width + window.width_offset);
 }
 
 

@@ -52,8 +52,6 @@ pub const Config = struct {
         on_focus_changed,
     },
 
-    disable_wrap_around_for_scroller: bool,
-
     gesture: struct {
         enabled: bool,
         fingers: i32,

@@ -182,7 +182,6 @@ fn handle_event(self: *Self, event: *Event) void {
 
             if (self.tracking) |output| {
                 const offset = output.gesture_base + @as(i32, @intFromFloat(@round(self.dx * ctx.cfg.gesture.scroll_factor)));
-                fill_edge(output, offset);
                 output.gesture_offset_x = damp_x(output, offset);
                 ctx.rwm.manageDirty();
             }
@@ -197,10 +196,6 @@ fn handle_event(self: *Self, event: *Event) void {
 
             if (self.tracking) |output| {
                 defer self.tracking = null;
-                if (!cancelled) {
-                    // a fling may go further than the drag, make sure there is something to land on
-                    fill_edge(output, output.gesture_base + @as(i32, @intFromFloat(@round(px * ctx.cfg.gesture.scroll_factor))));
-                }
                 const steps = if (cancelled) 0 else scroll_steps(output, px);
                 // remember where the current window is on screen, the next arrange
                 // turns the jump to the new resting position into an animation
@@ -351,9 +346,63 @@ pub fn start_settle_y(output: *Output, from: i32) void {
 }
 
 
+// start animating `window`'s own offset from `from` back to 0
+pub fn start_settle_window(window: *Window, from: i32) void {
+    window.move_offset_x = from;
+    if (from == 0) {
+        window.move_anim_start_ms = null;
+        return;
+    }
+    window.move_anim_from = @floatFromInt(from);
+    window.move_anim_start_ms = now_ms();
+    if (!ticking) {
+        ticking = true;
+        ctx.run_later(.fromMilliseconds(frame_ms), tick);
+    }
+}
+
+
+// start animating `window`'s width offset from `from` back to 0
+pub fn start_settle_width(window: *Window, from: i32) void {
+    window.width_offset = from;
+    if (from == 0) {
+        window.width_anim_start_ms = null;
+        return;
+    }
+    window.width_anim_from = @floatFromInt(from);
+    window.width_anim_start_ms = now_ms();
+    if (!ticking) {
+        ticking = true;
+        ctx.run_later(.fromMilliseconds(frame_ms), tick);
+    }
+}
+
+
 fn tick(_: *Context) void {
     const now = now_ms();
     var active = false;
+
+    var wit = ctx.windows.iterator(.forward);
+    while (wit.next()) |window| {
+        if (window.move_anim_start_ms) |start| {
+            if (ease(now, start, window.move_anim_from)) |offset| {
+                window.move_offset_x = offset;
+                active = true;
+            } else {
+                window.move_offset_x = 0;
+                window.move_anim_start_ms = null;
+            }
+        }
+        if (window.width_anim_start_ms) |start| {
+            if (ease(now, start, window.width_anim_from)) |offset| {
+                window.width_offset = offset;
+                active = true;
+            } else {
+                window.width_offset = 0;
+                window.width_anim_start_ms = null;
+            }
+        }
+    }
 
     var it = ctx.outputs.iterator(.forward);
     while (it.next()) |output| {
@@ -394,74 +443,6 @@ fn ease(now: i64, start: i64, from: f64) ?i32 {
 
 fn now_ms() i64 {
     return Io.Timestamp.now(ctx.io, .awake).toMilliseconds();
-}
-
-
-// When the fingers drag past the last window in some direction, move the window
-// from the opposite end over, so there is always something to scroll to.
-fn fill_edge(output: *Output, offset: i32) void {
-    if (ctx.cfg.disable_wrap_around_for_scroller or offset == 0) return;
-
-    const focus_top = ctx.focus_top_in(output, true) orelse return;
-    const gap = output.scroller().inner_gap;
-    const column = focus_top.width + gap;
-    if (column <= 0) return;
-    // columns that have to exist beyond the focused window to cover the drag
-    const need: usize = @intCast(@divFloor(@as(i32, @intCast(@abs(offset))) + column - 1, column));
-
-    var buffer: [64]*Window = undefined;
-    var windows: std.ArrayList(*Window) = .initBuffer(&buffer);
-    var focus_index: usize = 0;
-    {
-        var it = ctx.windows.iterator(.forward);
-        while (it.next()) |window| {
-            if (!window.is_visible_in(output) or window.floating) continue;
-            if (window == focus_top) focus_index = windows.items.len;
-            windows.appendBounded(window) catch return;
-        }
-    }
-    const n = windows.items.len;
-    // with two windows or less, reordering only flips them back and forth
-    if (n <= 2) return;
-
-    // offset < 0: content moves left, the windows after the focused one come into view
-    const forward = offset < 0;
-    const beyond = if (forward) n - 1 - focus_index else focus_index;
-    if (beyond >= need) return;
-    const moves = @min(need - beyond, n - 1 - beyond);
-    if (moves == 0) return;
-
-    // remember where the focused window rests before its neighbours change
-    if (output.gesture_rebase == null) {
-        if (focus_top.scroller_x) |scroller_x| switch (scroller_x) {
-            .x => |x| output.gesture_rebase = .{ .window = focus_top, .rest_x = x },
-            .center => {},
-        };
-    }
-
-    for (0..moves) |i| {
-        if (forward) {
-            // first window goes after the last one
-            const window = windows.items[i];
-            const tail = if (i == 0) windows.items[n - 1] else windows.items[i - 1];
-            window.link.remove();
-            tail.link.insert(&window.link);
-            log.debug("move {*} to the end", .{ window });
-        } else {
-            // last window goes before the first one
-            const window = windows.items[n - 1 - i];
-            const head = if (i == 0) windows.items[0] else windows.items[n - i];
-            const head_rest = if (head.scroller_x) |scroller_x| switch (scroller_x) {
-                .x => |x| x,
-                .center => head.x - output.gesture_offset_x,
-            } else head.x - output.gesture_offset_x;
-            window.link.remove();
-            head.link.prev.?.insert(&window.link);
-            // the window right before the focused one decides where the focused one rests
-            window.scroller_x = .{ .x = head_rest - gap - window.width };
-            log.debug("move {*} to the front", .{ window });
-        }
-    }
 }
 
 
@@ -507,7 +488,7 @@ fn scroll_steps(output: *Output, dx: f64) usize {
     const offset = @abs(dx * ctx.cfg.gesture.scroll_factor);
     // a short flick past the threshold still moves one column
     const steps = @max(1, @as(usize, @intFromFloat(@round(offset / column))));
-    // never go past the end, wrapping around would jump across the whole strip
+    // never go past the end
     return @min(steps, windows_beyond(output, focus_top, dx < 0));
 }
 

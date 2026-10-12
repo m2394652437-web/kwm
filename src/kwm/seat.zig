@@ -664,6 +664,7 @@ fn handle_actions(self: *Self) void {
             .cycle_scroller_mfact => |data| {
                 if (ctx.focused_window()) |window| {
                     if (window.floating or window.output != ctx.current_output) continue;
+                    ctx.prepare_resize(window);
                     const mfact = scroller_methods.cycle_mfact(
                         window.scroller_mfact,
                         data.candidate_mfacts,
@@ -675,6 +676,7 @@ fn handle_actions(self: *Self) void {
             .modify_mfact => |data| {
                 if (ctx.current_output) |output| {
                     if (ctx.focus_top_in(output, false)) |window| {
+                        ctx.prepare_resize(window);
                         const mfact = switch (data.change) {
                             .set => |mfact| mfact,
                             .step => |step| window.scroller_mfact + step,
