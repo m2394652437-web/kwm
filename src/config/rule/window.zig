@@ -20,6 +20,8 @@ pub const Dimension = struct {
 title: ?Pattern = null,
 app_id: ?Pattern = null,
 
+// 1 for the first workspace
+workspace: ?u8 = null,
 tag: ?u32 = null,
 output: ?Pattern = null,
 floating: ?bool = null,

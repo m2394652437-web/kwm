@@ -592,6 +592,19 @@ fn handle_actions(self: *Self) void {
             .toggle_fullscreen => |data| {
                 ctx.toggle_fullscreen(data.in_window);
             },
+            .set_workspace => |data| {
+                if (ctx.current_output) |output| {
+                    output.set_workspace(data.workspace -| 1);
+                }
+            },
+            .set_window_workspace => |data| {
+                if (ctx.focused_window()) |window| {
+                    if (window.output) |output| {
+                        window.set_workspace(output, data.workspace -| 1);
+                        if (data.focus_follow) output.set_workspace(data.workspace -| 1);
+                    }
+                }
+            },
             .set_output_tag => |data| {
                 if (ctx.current_output) |output| {
                     switch (data.tag) {

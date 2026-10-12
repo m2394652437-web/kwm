@@ -110,6 +110,9 @@ pub const Action = union(enum) {
     toggle_fullscreen: struct {
         in_window: bool = false,
     },
+    // 1 for the first workspace
+    set_workspace: struct { workspace: u8 },
+    set_window_workspace: struct { workspace: u8, focus_follow: bool = false },
     set_output_tag: struct { tag: Tag },
     set_window_tag: struct { tag: Tag, focus_follow: bool = false },
     toggle_output_tag: struct { mask: u32 },

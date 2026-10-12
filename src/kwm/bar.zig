@@ -136,8 +136,11 @@ pub fn handle_click(self: *Self, seat: *Seat) void {
             for (0.., self.static_splits.items) |i, split| {
                 if (x <= split) {
                     const tag = @as(u32, @intCast(1)) << @as(u5, @intCast(i));
+                    const workspace: u8 = @intCast(i + 1);
                     const callback_action = area.click.getter.get(seat.button) orelse return;
                     action = switch (callback_action) {
+                        .set_workspace => .{ .set_workspace = .{ .workspace = workspace } },
+                        .set_window_workspace => |data| .{ .set_window_workspace = .{ .workspace = workspace, .focus_follow = data.focus_follow } },
                         .set_window_tag => .{ .set_window_tag = .{ .tag = .{ .tag = tag } } },
                         .toggle_window_tag => .{ .toggle_window_tag = .{ .mask = tag } },
                         .set_output_tag => .{ .set_output_tag = .{ .tag = .{ .tag = tag } } },
@@ -380,7 +383,8 @@ fn render_static_component(self: *Self) void {
 
     const buffer = self.next_buffer(.static, w, h) orelse return;
 
-    const windows_tag: u32 = self.output.occupied_tags();
+    // every label is a workspace
+    const windows_tag: u32 = self.output.occupied_workspaces();
     const focused_window = ctx.focused_window();
 
     const scheme = ctx.cfg.bar.get_scheme(.tags);
@@ -404,7 +408,7 @@ fn render_static_component(self: *Self) void {
     for (0.., texts.items) |i, text| {
         const tag: u32 = @as(u32, @intCast(1)) << @as(u5, @intCast(i));
 
-        const is_focused = self.output.tag & tag != 0;
+        const is_focused = self.output.workspace == i;
 
         const tag_width: u16 = @intCast(render_.utils.text_width(text)+pad); 
         defer x += @intCast(tag_width);
@@ -437,7 +441,7 @@ fn render_static_component(self: *Self) void {
                 y,
             );
 
-            if (focused_window == null or focused_window.?.tag & tag == 0) {
+            if (focused_window == null or focused_window.?.workspace != i) {
                 self.draw_box(
                     buffer,
                     true,

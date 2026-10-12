@@ -19,6 +19,19 @@ const Window = @import("window.zig");
 const Gesture = @import("gesture.zig");
 const types = @import("types.zig");
 
+// number of workspaces per output, switched with mod+1..mod+9
+pub const workspace_max = 9;
+
+// rows of a workspace, `tag` selects the shown ones like the tags of dwm
+pub const Workspace = struct {
+    layouts: [32]Layout,
+
+    tag: u32 = 1,
+    main_tag: u32 = 1,
+    prev_tag: u32 = 1,
+    prev_main_tag: u32 = 1,
+};
+
 pub const State = struct {
     layouts: [32]Layout,
 
@@ -26,6 +39,9 @@ pub const State = struct {
     main_tag: u32 = 1,
     prev_tag: u32 = 1,
     prev_main_tag: u32 = 1,
+
+    workspace: u8 = 0,
+    workspaces: [workspace_max]Workspace,
 };
 
 const ctx = Context.get();
@@ -36,12 +52,18 @@ wl_output: ?*wl.Output = null,
 rwm_output: *river.OutputV1,
 rwm_layer_shell_output: ?*river.LayerShellOutputV1,
 
+// rows of the current workspace
 layouts: [32]Layout,
 
 tag: u32 = 1,
 main_tag: u32 = 1,
 prev_tag: u32 = 1,
 prev_main_tag: u32 = 1,
+
+// index of the shown workspace, windows of the other ones are hidden
+workspace: u8 = 0,
+// rows of every workspace; the entry of the current one is stale, the fields above are used instead
+workspaces: [workspace_max]Workspace,
 // horizontal offset applied by scroller layout while a touchpad swipe is in progress
 gesture_offset_x: i32 = 0,
 // offset when the current swipe started, the finger movement is added on top of it
@@ -90,6 +112,7 @@ pub fn create(
         .rwm_output = rwm_output,
         .rwm_layer_shell_output = rwm_layer_shell_output,
         .layouts = .{ctx.cfg.layout} ** 32,
+        .workspaces = .{Workspace{ .layouts = .{ctx.cfg.layout} ** 32 }} ** workspace_max,
     };
     output.link.init();
 
@@ -234,6 +257,43 @@ pub fn set_tag(self: *Self, tag: u32) void {
     if (comptime build_options.bar_enabled) self.bar.damage(.tags);
 }
 
+pub fn set_workspace(self: *Self, workspace: u8) void {
+    if (workspace >= workspace_max or workspace == self.workspace) return;
+
+    log.debug("<{*}> set workspace: {}", .{ self, workspace });
+
+    inline for (@typeInfo(Workspace).@"struct".fields) |field| {
+        @field(self.workspaces[self.workspace], field.name) = @field(self, field.name);
+        @field(self, field.name) = @field(self.workspaces[workspace], field.name);
+    }
+    self.workspace = workspace;
+
+    // rows of different workspaces are unrelated, do not slide between them
+    self.gesture_prev_tag = 0;
+    self.gesture_peek_tag = 0;
+    self.gesture_offset_y = 0;
+    self.gesture_anim_y_start_ms = null;
+    self.tag_step_direction = 0;
+    self.scroller_prev_focus = null;
+
+    if (comptime build_options.bar_enabled) self.bar.damage(.tags);
+}
+
+// rows shown in `workspace`
+pub fn workspace_tag(self: *const Self, workspace: u8) u32 {
+    return if (workspace == self.workspace) self.main_tag else self.workspaces[workspace].main_tag;
+}
+
+// workspaces holding windows of this output
+pub fn occupied_workspaces(self: *const Self) u32 {
+    var mask: u32 = 0;
+    var it = ctx.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.output == self and window.swallowed_by == null) mask |= @as(u32, 1) << @intCast(window.workspace);
+    }
+    return mask;
+}
+
 pub fn switch_to_previous_tag(self: *Self) void {
     const prev_main_tag = self.prev_main_tag;
 
@@ -249,7 +309,7 @@ pub fn occupied_tags(self: *const Self) u32 {
     {
         var it = ctx.windows.safeIterator(.forward);
         while (it.next()) |window| {
-            if (window.output == self and window.swallowed_by == null) mask |= window.tag;
+            if (window.output == self and window.workspace == self.workspace and window.swallowed_by == null) mask |= window.tag;
         }
     }
     return mask;
@@ -313,19 +373,19 @@ fn tag_limit() usize {
     return if (ctx.cfg.bar.tags) |area| area.tags.len else 32;
 }
 
-// tags holding windows of this output; sticky windows are on every tag and do not count
+// rows of the current workspace holding windows of this output; sticky windows are on every row and do not count
 fn dynamic_occupied(self: *const Self) u32 {
     var mask: u32 = 0;
     var it = ctx.windows.iterator(.forward);
     while (it.next()) |window| {
-        if (window.output == self and window.swallowed_by == null and !window.sticky) mask |= window.tag;
+        if (window.output == self and window.workspace == self.workspace and window.swallowed_by == null and !window.sticky) mask |= window.tag;
     }
     return mask;
 }
 
-// number of workspaces with dynamic tags: the occupied ones (packed to the front by
-// normalize_tags), the current one even if empty, and one empty tag after them
-pub fn workspace_count(self: *const Self) usize {
+// number of rows of the current workspace with dynamic tags: the occupied ones (packed to
+// the front by normalize_tags), the current one even if empty, and one empty row after them
+pub fn row_count(self: *const Self) usize {
     const occupied = self.dynamic_occupied();
     const kept = occupied | self.tag;
     if (kept == 0) return 1;
@@ -334,10 +394,10 @@ pub fn workspace_count(self: *const Self) usize {
     return @min(@as(usize, last) + 1 + trailing_empty, tag_limit());
 }
 
-// next/previous workspace of `base`, wrapping around at both ends
+// next/previous row of `base`, wrapping around at both ends
 pub fn ring_neighbor(self: *const Self, base: u32, direction: types.Direction) u32 {
     if (base == 0) return 0;
-    const n = self.workspace_count();
+    const n = self.row_count();
     const current = @ctz(base);
     const next: usize = switch (direction) {
         .forward => if (current + 1 < n) current + 1 else 0,
@@ -346,11 +406,11 @@ pub fn ring_neighbor(self: *const Self, base: u32, direction: types.Direction) u
     return @as(u32, 1) << @intCast(next);
 }
 
-// switch to the next/previous workspace, wrapping around at both ends
+// switch to the next/previous row, wrapping around at both ends
 pub fn step_tag(self: *Self, direction: types.Direction) void {
     // windows may have been closed since the last arrange
     self.normalize_tags();
-    if (self.workspace_count() < 2) return;
+    if (self.row_count() < 2) return;
     self.tag_step_direction = switch (direction) {
         .forward => 1,
         .reverse => -1,
@@ -398,14 +458,14 @@ fn apply_permutation(perm: *const Permutation, mask: u32) u32 {
     return result;
 }
 
-// renumber the tags of this output and everything that refers to them
+// renumber the rows of the current workspace and everything that refers to them
 fn permute_tags(self: *Self, perm: *const Permutation) void {
     if (std.mem.eql(u5, perm, &identity)) return;
     log.debug("<{*}> renumber tags", .{self});
 
     var it = ctx.windows.iterator(.forward);
     while (it.next()) |window| {
-        if (window.output == self) window.tag = apply_permutation(perm, window.tag);
+        if (window.output == self and window.workspace == self.workspace) window.tag = apply_permutation(perm, window.tag);
     }
 
     inline for (.{ "tag", "main_tag", "prev_tag", "prev_main_tag", "gesture_peek_tag", "gesture_prev_tag" }) |name| {
@@ -475,9 +535,12 @@ fn shift_tiled(self: *Self, dy: i32) void {
 
 fn apply_rule(self: *Self, rule: *const config.OutputRule) void {
     if (rule.presentation_mode) |mode| self.set_presentation(mode);
-    if (rule.layout) |layout| for (&self.layouts) |*l| {
-        l.* = config.meta.override(l.*, layout);
-    };
+    if (rule.layout) |layout| {
+        for (&self.layouts) |*l| l.* = config.meta.override(l.*, layout);
+        for (&self.workspaces) |*workspace| {
+            for (&workspace.layouts) |*l| l.* = config.meta.override(l.*, layout);
+        }
+    }
 }
 
 fn set_name(self: *Self, name: ?[]const u8) void {

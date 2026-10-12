@@ -95,6 +95,8 @@ geometry_undefined: bool = false,
 mapped: bool = false,
 
 tag: u32 = 1,
+// workspace of its output the window belongs to, `tag` picks the rows in it
+workspace: u8 = 0,
 pid: i32 = 0,
 app_id: ?[]const u8 = null,
 title: ?[]const u8 = null,
@@ -192,6 +194,7 @@ pub fn create(rwm_window: *river.WindowV1, output: ?*Output) !*Self {
     window.link.init();
     window.flink.init();
     if (output) |o| {
+        window.workspace = o.workspace;
         window.set_tag(o.tag);
         window.set_output(o, false);
     }
@@ -297,6 +300,18 @@ pub fn set_tag(self: *Self, tag: u32) void {
     if (comptime build_options.bar_enabled) {
         if (self.output) |output| output.bar.damage(.tags);
     }
+}
+
+// move to `workspace` of `output`, onto the row shown there
+pub fn set_workspace(self: *Self, output: *Output, workspace: u8) void {
+    if (workspace >= Output.workspace_max or workspace == self.workspace) return;
+
+    log.debug("<{*}> set workspace: {}", .{ self, workspace });
+
+    self.workspace = workspace;
+    self.tag = output.workspace_tag(workspace);
+
+    if (comptime build_options.bar_enabled) output.bar.damage(.tags);
 }
 
 pub fn toggle_tag(self: *Self, mask: u32) void {
@@ -525,10 +540,12 @@ pub fn is_visible(self: *Self) bool {
     }
 
     if (self.output) |output| {
-        // tiled windows of the tag revealed by a vertical swipe
-        if ((self.tag & output.gesture_peek_tag) != 0 and !self.floating and self.swallowed_by == null) return true;
-        return (self.sticky or
-            (self.tag & output.tag) != 0) and self.swallowed_by == null;
+        if (self.swallowed_by != null) return false;
+        if (self.sticky) return true;
+        if (self.workspace != output.workspace) return false;
+        // tiled windows of the row revealed by a vertical swipe
+        if ((self.tag & output.gesture_peek_tag) != 0 and !self.floating) return true;
+        return (self.tag & output.tag) != 0;
     }
     return false;
 }
@@ -538,7 +555,7 @@ pub fn is_visible_in(self: *Self, output: *Output) bool {
 
     if (self.output.? != output) return false;
 
-    return (self.sticky or (self.tag & output.tag) != 0) and self.swallowed_by == null;
+    return (self.sticky or (self.workspace == output.workspace and (self.tag & output.tag) != 0)) and self.swallowed_by == null;
 }
 
 pub fn toggle_swallow(self: *Self) void {
@@ -915,6 +932,7 @@ fn swallow(self: *Self, window: *Self) void {
     self.swallowing = window;
 
     self.tag = window.tag;
+    self.workspace = window.workspace;
     self.scroller_x = window.scroller_x;
     if (self.floating == window.floating) {
         self.x = window.x;
@@ -955,6 +973,7 @@ fn unswallow(self: *Self) void {
         window.swallowed_by = null;
         window.output = self.output;
         window.tag = self.tag;
+        window.workspace = self.workspace;
 
         window.link.remove();
         self.link.insert(&window.link);
@@ -969,6 +988,7 @@ fn unswallow(self: *Self) void {
 }
 
 fn apply_rule(self: *Self, rule: *const config.WindowRule) void {
+    if (rule.workspace) |workspace| if (self.output) |output| self.set_workspace(output, workspace -| 1);
     if (rule.tag) |tag| self.set_tag(tag);
     if (rule.output) |output_pattern| {
         {

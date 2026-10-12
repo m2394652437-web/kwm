@@ -43,17 +43,16 @@
 
         // set null to disable tags part
         .tags = .{
-            // tags show on bar
+            // workspaces show on bar
             .tags = .{ "1", "2", "3", "4", "5", "6", "7", "8", "9" },
 
             // click callback
             // each part supports left/right/middle/side/extra/forward/back/task
             // set null to disable
             .click = .{
-                // could use 0 there because it will be replace with the tag clicked
-                .left = .{ .set_output_tag = .{ .tag = .{ .tag = 0 } } },
-                .right = .{ .toggle_output_tag = .{ .mask = 0 } },
-                .middle = .{ .toggle_window_tag = .{ .mask = 0 } },
+                // could use 0 there because it will be replaced with the workspace clicked
+                .left = .{ .set_workspace = .{ .workspace = 0 } },
+                .middle = .{ .set_window_workspace = .{ .workspace = 0 } },
             },
         },
         // set null to disable mode part
@@ -134,10 +133,12 @@
 
     .single_tagset = false,
 
-    // niri-like dynamic workspaces (ignored with single_tagset):
-    // empty tags are removed and the occupied ones are packed to the front, so there is
-    // always exactly one empty tag after them. Switching to the next/previous tag past
-    // either end moves the tag from the other end over, so the tags form a ring.
+    // workspaces: mod+1..mod+9 switch between 9 workspaces per output, each one is a plane
+    // of rows (tags) stacked vertically, mod+up/mod+down switch between the rows.
+    // niri-like dynamic rows (ignored with single_tagset):
+    // empty rows are removed and the occupied ones are packed to the front, so there is
+    // always exactly one empty row after them. Switching to the next/previous row past
+    // either end moves the row from the other end over, so the rows form a ring.
     .dynamic_tags = true,
 
     .sloppy_focus = false,
@@ -149,7 +150,7 @@
 
     // touchpad swipe gestures, read from libinput directly (requires the `input` group)
     //  horizontal swipe: scroll the windows
-    //  vertical swipe:   switch to the next/previous tag
+    //  vertical swipe:   switch to the next/previous row of the workspace
     .gesture = .{
         .enabled = true,
         // number of fingers of the swipe
@@ -530,7 +531,7 @@
                     },
                 },
             },
-            // Arrow-key navigation: reorder tiled windows horizontally and move them between tags vertically.
+            // Arrow-key navigation: reorder tiled windows horizontally and move them between rows vertically.
             .{
                 .keysym = "Left",
                 .modifiers = .{ .mod4 = true, .mod1 = true },
@@ -559,7 +560,7 @@
                 .event = .{
                     .click = .{
                         .pressed = .{
-                            .set_window_tag = .{ .tag = .{ .direction = .forward }, .focus_follow = true },
+                            .set_window_tag = .{ .tag = .{ .direction = .reverse }, .focus_follow = true },
                         },
                     },
                 },
@@ -570,7 +571,30 @@
                 .event = .{
                     .click = .{
                         .pressed = .{
-                            .set_window_tag = .{ .tag = .{ .direction = .reverse }, .focus_follow = true },
+                            .set_window_tag = .{ .tag = .{ .direction = .forward }, .focus_follow = true },
+                        },
+                    },
+                },
+            },
+            // switch between the rows of the workspace
+            .{
+                .keysym = "Up",
+                .modifiers = .{ .mod4 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .set_output_tag = .{ .tag = .{ .direction = .reverse } },
+                        },
+                    },
+                },
+            },
+            .{
+                .keysym = "Down",
+                .modifiers = .{ .mod4 = true },
+                .event = .{
+                    .click = .{
+                        .pressed = .{
+                            .set_output_tag = .{ .tag = .{ .direction = .forward } },
                         },
                     },
                 },
@@ -732,47 +756,25 @@
                 },
             },
 
-            .{ .keysym = "1", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b1 } } } } } },
-            .{ .keysym = "2", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b10 } } } } } },
-            .{ .keysym = "3", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b100 } } } } } },
-            .{ .keysym = "4", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b1000 } } } } } },
-            .{ .keysym = "5", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b10000 } } } } } },
-            .{ .keysym = "6", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b100000 } } } } } },
-            .{ .keysym = "7", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b1000000 } } } } } },
-            .{ .keysym = "8", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b10000000 } } } } } },
-            .{ .keysym = "9", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b100000000 } } } } } },
-            .{ .keysym = "0", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_output_tag = .{ .tag = .{ .tag = 0b111111111 } } } } } },
+            .{ .keysym = "1", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 1 } } } } },
+            .{ .keysym = "2", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 2 } } } } },
+            .{ .keysym = "3", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 3 } } } } },
+            .{ .keysym = "4", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 4 } } } } },
+            .{ .keysym = "5", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 5 } } } } },
+            .{ .keysym = "6", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 6 } } } } },
+            .{ .keysym = "7", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 7 } } } } },
+            .{ .keysym = "8", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 8 } } } } },
+            .{ .keysym = "9", .modifiers = .{ .mod4 = true }, .event = .{ .click = .{ .pressed = .{ .set_workspace = .{ .workspace = 9 } } } } },
 
-            .{ .keysym = "1", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b1 } } } } },
-            .{ .keysym = "2", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b10 } } } } },
-            .{ .keysym = "3", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b100 } } } } },
-            .{ .keysym = "4", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b1000 } } } } },
-            .{ .keysym = "5", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b10000 } } } } },
-            .{ .keysym = "6", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b100000 } } } } },
-            .{ .keysym = "7", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b1000000 } } } } },
-            .{ .keysym = "8", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b10000000 } } } } },
-            .{ .keysym = "9", .modifiers = .{ .mod4 = true, .ctrl = true }, .event = .{ .click = .{ .pressed = .{ .toggle_output_tag = .{ .mask = 0b100000000 } } } } },
-
-            .{ .keysym = "1", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b1 } } } } } },
-            .{ .keysym = "2", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b10 } } } } } },
-            .{ .keysym = "3", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b100 } } } } } },
-            .{ .keysym = "4", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b1000 } } } } } },
-            .{ .keysym = "5", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b10000 } } } } } },
-            .{ .keysym = "6", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b100000 } } } } } },
-            .{ .keysym = "7", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b1000000 } } } } } },
-            .{ .keysym = "8", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b10000000 } } } } } },
-            .{ .keysym = "9", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b100000000 } } } } } },
-            .{ .keysym = "0", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_tag = .{ .tag = .{ .tag = 0b111111111 } } } } } },
-
-            .{ .keysym = "1", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b1 } } } } },
-            .{ .keysym = "2", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b10 } } } } },
-            .{ .keysym = "3", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b100 } } } } },
-            .{ .keysym = "4", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b1000 } } } } },
-            .{ .keysym = "5", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b10000 } } } } },
-            .{ .keysym = "6", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b100000 } } } } },
-            .{ .keysym = "7", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b1000000 } } } } },
-            .{ .keysym = "8", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b10000000 } } } } },
-            .{ .keysym = "9", .modifiers = .{ .mod4 = true, .ctrl = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .toggle_window_tag = .{ .mask = 0b100000000 } } } } },
+            .{ .keysym = "1", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 1 } } } } },
+            .{ .keysym = "2", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 2 } } } } },
+            .{ .keysym = "3", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 3 } } } } },
+            .{ .keysym = "4", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 4 } } } } },
+            .{ .keysym = "5", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 5 } } } } },
+            .{ .keysym = "6", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 6 } } } } },
+            .{ .keysym = "7", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 7 } } } } },
+            .{ .keysym = "8", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 8 } } } } },
+            .{ .keysym = "9", .modifiers = .{ .mod4 = true, .shift = true }, .event = .{ .click = .{ .pressed = .{ .set_window_workspace = .{ .workspace = 9 } } } } },
 
             .{
                 .keysym = "l",
@@ -912,7 +914,8 @@
     //      app_id: rule pattern
     //      title: rule pattern
     //
-    //      tag: window tag
+    //      workspace: window workspace, 1 for the first one
+    //      tag: window rows in its workspace
     //      output: output name pattern, same as rule pattern
     //      floating: bool, if floating
     //      dimension: .{ .width = i32, .height = i32 }, initial dimension

@@ -648,6 +648,7 @@ pub fn send_to_output(self: *Self, window: *Window, direction: types.Direction) 
                 },
                 else => {},
             }
+            window.workspace = new_output.workspace;
             window.set_tag(new_output.tag);
         }
     }

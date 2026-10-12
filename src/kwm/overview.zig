@@ -136,7 +136,7 @@ pub fn arrange(self: *Self, output: *Output) void {
 }
 
 pub fn is_candidate(window: *const Window, output: *const Output) bool {
-    return window.output == output and !window.floating and window.swallowed_by == null;
+    return window.output == output and window.workspace == output.workspace and !window.floating and window.swallowed_by == null;
 }
 
 inline fn row_of(window: *const Window) u5 {
