@@ -65,6 +65,8 @@ const Axis = enum { undecided, horizontal, vertical };
 
 // whether an animation tick is already scheduled
 var ticking = false;
+// time of the last render sequence, animations started after it have not been shown yet
+var last_render_ms: i64 = 0;
 
 
 li: *Libinput,
@@ -429,6 +431,34 @@ fn tick(_: *Context) void {
 
     ctx.rwm.manageDirty();
     if (active) ctx.run_later(.fromMilliseconds(frame_ms), tick) else ticking = false;
+}
+
+
+// called at render start: an animation's clock starts with its first shown frame. river
+// waits for the clients to answer a manage sequence before rendering it, and after a focus
+// change a big browser redrawing itself as deactivated can take long enough that the
+// easing would already be far along, so the slide would start with a jump
+pub fn restart_unshown() void {
+    const now = now_ms();
+    defer last_render_ms = now;
+
+    var wit = ctx.windows.iterator(.forward);
+    while (wit.next()) |window| {
+        restart_if_unshown(&window.move_anim_start_ms, now);
+        restart_if_unshown(&window.width_anim_start_ms, now);
+    }
+    var it = ctx.outputs.iterator(.forward);
+    while (it.next()) |output| {
+        restart_if_unshown(&output.gesture_anim_start_ms, now);
+        restart_if_unshown(&output.gesture_anim_y_start_ms, now);
+    }
+}
+
+fn restart_if_unshown(start_ms: *?i64, now: i64) void {
+    const start = start_ms.* orelse return;
+    if (start < last_render_ms) return;
+    if (now - start > frame_ms) log.debug("animation shown {} ms after it started", .{now - start});
+    start_ms.* = now;
 }
 
 

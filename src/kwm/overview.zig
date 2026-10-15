@@ -5,6 +5,7 @@ const config = @import("config");
 const Context = @import("context.zig");
 const Output = @import("output.zig");
 const Window = @import("window.zig");
+const Gesture = @import("gesture.zig");
 
 pub const mode = "overview";
 pub const Direction = enum {
@@ -18,6 +19,8 @@ const ctx = Context.get();
 
 active: bool = false,
 selected: ?*Window = null,
+// a window was closed, leave if the current output has none left
+check_empty: bool = false,
 
 pub fn toggle(self: *Self) void {
     if (self.active) self.exit() else self.enter();
@@ -25,6 +28,7 @@ pub fn toggle(self: *Self) void {
 
 pub fn enter(self: *Self) void {
     if (self.active) return;
+    if (first_candidate() == null) return;
     log.debug("enter overview", .{});
 
     self.active = true;
@@ -54,6 +58,7 @@ pub fn exit(self: *Self) void {
 
     self.active = false;
     self.selected = null;
+    self.check_empty = false;
 
     var it = ctx.windows.safeIterator(.forward);
     while (it.next()) |window| {
@@ -64,7 +69,24 @@ pub fn exit(self: *Self) void {
         if (saved.fullscreen) |output| window.prepare_fullscreen(output);
     }
 
+    // stop a workspace slide, the scroller reads this offset too
+    var oit = ctx.outputs.iterator(.forward);
+    while (oit.next()) |output| Gesture.start_settle(output, 0);
+
     ctx.switch_mode(config.default_mode);
+}
+
+// switch the workspace of `output` while staying in overview; the new one slides in
+// from the side it lies on, so going left moves the windows to the right
+pub fn set_workspace(self: *Self, output: *Output, workspace: u8) void {
+    const prev = output.workspace;
+    output.set_workspace(workspace);
+    if (output.workspace == prev) return;
+
+    self.selected = null;
+    if (!ctx.cfg.gesture.animate_bindings) return;
+    const side: i32 = if (workspace < prev) -1 else 1;
+    Gesture.start_settle(output, side * output.exclusive_width());
 }
 
 pub fn arrange(self: *Self, output: *Output) void {
@@ -122,7 +144,7 @@ pub fn arrange(self: *Self, output: *Output) void {
             }
         }
 
-        var x = if (total_width <= width - 2 * outer_gap) @divFloor(width - total_width, 2) else std.math.clamp(@divFloor(width - anchor_width, 2) - anchor_x, width - outer_gap - total_width, outer_gap);
+        var x = output.gesture_offset_x + if (total_width <= width - 2 * outer_gap) @divFloor(width - total_width, 2) else std.math.clamp(@divFloor(width - anchor_width, 2) - anchor_x, width - outer_gap - total_width, outer_gap);
 
         var it = ctx.windows.safeIterator(.forward);
         while (it.next()) |window| {
@@ -190,7 +212,7 @@ pub fn select(self: *Self, direction: Direction) void {
     } orelse current;
 }
 
-fn first_candidate() ?*Window {
+pub fn first_candidate() ?*Window {
     const output = ctx.current_output orelse return null;
     var it = ctx.windows.safeIterator(.forward);
     while (it.next()) |window| {

@@ -68,6 +68,8 @@ window_below_pointer: struct {
     new: bool = false,
 } = .{},
 has_pointer_interaction: bool = false,
+// op_release arrived with no window left to stop, end the op in the next manage
+op_end_pending: bool = false,
 unhandled_actions: std.ArrayList(binding.Action) = undefined,
 xkb_bindings: std.StringHashMap(std.ArrayList(*binding.XkbBinding)) = undefined,
 pointer_bindings: std.StringHashMap(std.ArrayList(*binding.PointerBinding)) = undefined,
@@ -191,6 +193,11 @@ pub fn manage(self: *Self) void {
     defer log.debug("<{*}> managed", .{self});
 
     defer self.pointer_position.new = false;
+
+    if (self.op_end_pending) {
+        self.op_end_pending = false;
+        self.op_end();
+    }
 
     // TODO: https://codeberg.org/river/river/issues/1317
     // if ctx.cfg.sloppy_focus is true, once pointer activity, check window_below_pointer.new,
@@ -594,7 +601,9 @@ fn handle_actions(self: *Self) void {
             },
             .set_workspace => |data| {
                 if (ctx.current_output) |output| {
-                    output.set_workspace(data.workspace -| 1);
+                    if (ctx.overview.active) {
+                        ctx.overview.set_workspace(output, data.workspace -| 1);
+                    } else output.set_workspace(data.workspace -| 1);
                 }
             },
             .set_window_workspace => |data| {
@@ -768,6 +777,19 @@ fn shell_surface_interaction(self: *Self, shell_surface: *ShellSurface) void {
     self.has_pointer_interaction = true;
 }
 
+// the window this seat is moving or resizing
+fn operated_window(self: *Self) ?*Window {
+    var it = ctx.windows.safeIterator(.forward);
+    while (it.next()) |window| {
+        switch (window.operator) {
+            .none => {},
+            .move => |data| if (data.seat == self) return window,
+            .resize => |data| if (data.seat == self) return window,
+        }
+    }
+    return null;
+}
+
 fn rwm_seat_listener(rwm_seat: *river.SeatV1, event: river.SeatV1.Event, seat: *Self) void {
     std.debug.assert(rwm_seat == seat.rwm_seat);
 
@@ -775,7 +797,9 @@ fn rwm_seat_listener(rwm_seat: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .op_delta => |data| {
             log.debug("<{*}> op delta: (dx: {}, dy: {})", .{ seat, data.dx, data.dy });
 
-            const window = ctx.focused_window().?;
+            // focus may have moved away from the operated window (sloppy focus, a new
+            // window), and the operated window may already be closed
+            const window = seat.operated_window() orelse return;
             switch (window.operator) {
                 .none => unreachable,
                 .move => |op_data| {
@@ -830,22 +854,15 @@ fn rwm_seat_listener(rwm_seat: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .op_release => {
             log.debug("<{*}> op release", .{seat});
 
-            if (ctx.focused_window()) |window| {
+            if (seat.operated_window()) |window| {
                 switch (window.operator) {
-                    .none => {},
-                    .move => |data| {
-                        if (data.seat == seat) {
-                            window.prepare_move(.stop);
-                        }
-                    },
-                    .resize => |data| {
-                        if (data.seat == seat) {
-                            window.prepare_resize(.stop);
-                        }
-                    },
+                    .none => unreachable,
+                    .move => window.prepare_move(.stop),
+                    .resize => window.prepare_resize(.stop),
                 }
             } else {
-                log.debug("no window focused", .{});
+                log.debug("no window operated", .{});
+                seat.op_end_pending = true;
             }
         },
         .pointer_enter => |data| {

@@ -26,6 +26,7 @@ const Output = @import("output.zig");
 const Window = @import("window.zig");
 const KeyRepeat = @import("key_repeat.zig");
 const Overview = @import("overview.zig");
+const Gesture = @import("gesture.zig");
 const ShellSurface = @import("shell_surface.zig");
 
 const TimerTask = struct {
@@ -1182,6 +1183,8 @@ fn rwm_listener(rwm: *river.WindowManagerV1, event: river.WindowManagerV1.Event,
         },
         .render_start => {
             log.debug("render start", .{});
+
+            Gesture.restart_unshown();
 
             context.prepare_render_windows();
             context.render_windows();

@@ -225,6 +225,7 @@ pub fn destroy(self: *Self) void {
     }
 
     if (ctx.overview.selected == self) ctx.overview.selected = null;
+    if (ctx.overview.active) ctx.overview.check_empty = true;
     self.set_former_output(null);
 
     if (self.is_terminal) {

@@ -17,6 +17,7 @@ const Layout = @import("layout.zig");
 const Context = @import("context.zig");
 const Window = @import("window.zig");
 const Gesture = @import("gesture.zig");
+const Overview = @import("overview.zig");
 const types = @import("types.zig");
 
 // number of workspaces per output, switched with mod+1..mod+9
@@ -345,6 +346,11 @@ pub inline fn scroller_mfact(self: *const Self) f32 {
 }
 
 pub fn manage(self: *Self) void {
+    // leave overview once the last window on the current output is closed
+    if (ctx.overview.active and ctx.overview.check_empty and ctx.current_output == self) {
+        ctx.overview.check_empty = false;
+        if (Overview.first_candidate() == null) ctx.overview.exit();
+    }
     if (ctx.overview.active) {
         self.scroller_prev_focus = null;
         ctx.overview.arrange(self);
